@@ -1704,21 +1704,10 @@
       }
 
       async function exportCsv() {
-        const rows = [[
-          "保存日時", "点検日", "車両番号", "乗務員", "タイヤ番号", "メーカー", "種類", "溝", "偏摩耗", "キズ", "空気圧", "状態", "報告事項"
-        ]];
-        const currentEntry = snapshot();
-        rows.push(...rowsFor(currentEntry));
-
-        const csv = rows.map((r) => r.map(esc).join(",")).join("\r\n");
-        const driverPart = sanitizeFileNamePart(currentEntry.data.driverName);
-        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-        const fileName = `月次タイヤ点検_${driverPart}_${stamp}.csv`;
-        const content = "\uFEFF" + csv;
         const previousSnapshot = normalizeCurrent(JSON.parse(JSON.stringify(current)));
-        // Keep a reusable snapshot even when share sheet is canceled.
+        // Keep previous data in memory only. Do not back up to smartphone storage.
         previous = previousSnapshot;
-        savePrevious();
+        localStorage.removeItem(STORAGE.previous);
         if (window.FirebaseCloudSync && typeof window.FirebaseCloudSync.saveNowDetailed === "function") {
           const cloudResult = await window.FirebaseCloudSync.saveNowDetailed("submit");
           if (!cloudResult.ok && cloudResult.reason !== "disabled" && cloudResult.reason !== "payload_missing") {
@@ -1739,16 +1728,6 @@
             showToast("Firebase未保存です。再送信してください");
             return;
           }
-        }
-
-        const shareResult = await shareCsvFile(fileName, content);
-        if (!shareResult.ok) {
-          if (shareResult.reason === SHARE_REASONS.CANCEL) {
-            renderAll();
-            showToast("共有がキャンセルされました（前回データは保存済み）");
-            return;
-          }
-          downloadCsv(fileName, content);
         }
         resetCurrent({ confirm: false, toast: false });
         await showSendFarewell();
