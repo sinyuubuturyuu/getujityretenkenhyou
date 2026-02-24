@@ -484,6 +484,20 @@
       color: var(--text-strong);
       border-color: color-mix(in srgb, var(--accent) 70%, black);
     }
+    .mini-btn.restore-btn {
+      background: color-mix(in srgb, var(--ok) 20%, var(--surface));
+      border-color: color-mix(in srgb, var(--ok) 45%, var(--line));
+    }
+    .mini-btn:disabled {
+      opacity: 0.58;
+      cursor: not-allowed;
+    }
+    .backup-status {
+      margin-top: 4px;
+      font-size: .82rem;
+      font-weight: 700;
+      color: var(--muted);
+    }
     dialog {
       border: none;
       width: min(92vw, 420px);
@@ -801,7 +815,11 @@
             <div class="row">
               <input id="newVehicleNumber" type="text" placeholder="例: 品川 100 あ 1234" autocomplete="off">
               <button id="addVehicleBtn" class="btn primary" type="button">登録</button>
+              <button id="saveVehicleBackupBtn" class="mini-btn show-btn" type="button">保存</button>
+              <button id="restoreVehicleBackupBtn" class="mini-btn restore-btn" type="button">復元</button>
+              <button id="deleteVehicleBackupBtn" class="mini-btn" type="button">削除</button>
             </div>
+            <div id="vehicleBackupStatus" class="backup-status">バックアップ: 読み込み待ち</div>
           </div>
           <div class="field">
             <label>登録済み車両番号</label>
@@ -812,7 +830,11 @@
             <div class="row">
               <input id="newDriverName" type="text" placeholder="例: 山田 太郎" autocomplete="off">
               <button id="addDriverBtn" class="btn primary" type="button">登録</button>
+              <button id="saveDriverBackupBtn" class="mini-btn show-btn" type="button">保存</button>
+              <button id="restoreDriverBackupBtn" class="mini-btn restore-btn" type="button">復元</button>
+              <button id="deleteDriverBackupBtn" class="mini-btn" type="button">削除</button>
             </div>
+            <div id="driverBackupStatus" class="backup-status">バックアップ: 読み込み待ち</div>
           </div>
           <div class="field">
             <label>登録済み乗務員</label>
@@ -896,8 +918,8 @@
   <div id="sendFarewell" class="send-farewell" aria-hidden="true">
     <img id="sendFarewellImage" src="icons/getujityretenkenhyou.png" alt="送信ありがとうございました。ご安全に。">
   </div>
-  <script src="./firebase/firebase-config.js?v=20260222-2"></script>
-  <script src="./firebase/firebase-cloud-sync.js?v=20260222-2"></script>
+  <script src="./firebase/firebase-config.js?v=20260224-4"></script>
+  <script src="./firebase/firebase-cloud-sync.js?v=20260224-4"></script>
   <script>
     (() => {
       "use strict";
@@ -910,16 +932,23 @@
         truckTypes: "tire.monthly.trucktypes.v1",
         theme: "tire.monthly.theme.v1"
       };
+      const SETTINGS_BACKUP_KIND = Object.freeze({
+        VEHICLES: "vehicles",
+        DRIVERS: "drivers"
+      });
+      const SETTINGS_BACKUP_SLOT = 1;
       const LAST_COMMIT_PUSHED_AT = "2026-02-22 12:00";
       const GITHUB_REPO_API_LATEST_COMMIT = "https://api.github.com/repos/yuuitihtnk167-art/getujityretenkenhyou/commits?sha=main&per_page=1";
 
       const TRUCK_TYPES = {
         LOW12: "low12",
-        TEN10: "ten10"
+        TEN10: "ten10",
+        FOURTON6: "fourton6"
       };
       const TRUCK_TYPE_CATALOG = [
         { value: TRUCK_TYPES.LOW12, label: "大型低床" },
-        { value: TRUCK_TYPES.TEN10, label: "大型10輪" }
+        { value: TRUCK_TYPES.TEN10, label: "大型10輪" },
+        { value: TRUCK_TYPES.FOURTON6, label: "４トン車" }
       ];
       const FLOW_SCREENS = {
         BASIC: "basic",
@@ -930,6 +959,7 @@
 
       const DISPLAY_MAP_12 = ["①", "⑦", "②", "⑧", "③", "⑨", "④", "⑩", "⑤", "⑪", "⑥", "⑫"];
       const DISPLAY_MAP_10 = ["①", "⑥", "②", "⑦", "③", "⑧", "④", "⑨", "⑤", "⑩"];
+      const DISPLAY_MAP_6 = ["①", "④", "②", "⑤", "③", "⑥"];
       const ALL_IDS = Array.from({ length: 12 }, (_, i) => i + 1);
 
       const TRUCK_LAYOUTS = {
@@ -942,6 +972,11 @@
           left: [[1], [3, 5], [7, 9]],
           right: [[2], [4, 6], [8, 10]],
           axes: ["前輪", "2軸", "3軸"]
+        },
+        [TRUCK_TYPES.FOURTON6]: {
+          left: [[1], [3, 5]],
+          right: [[2], [4, 6]],
+          axes: ["前輪", "2軸"]
         }
       };
 
@@ -1004,9 +1039,17 @@
         settingsUpdatedAt: document.getElementById("settingsUpdatedAt"),
         newVehicleNumber: document.getElementById("newVehicleNumber"),
         addVehicleBtn: document.getElementById("addVehicleBtn"),
+        saveVehicleBackupBtn: document.getElementById("saveVehicleBackupBtn"),
+        restoreVehicleBackupBtn: document.getElementById("restoreVehicleBackupBtn"),
+        deleteVehicleBackupBtn: document.getElementById("deleteVehicleBackupBtn"),
+        vehicleBackupStatus: document.getElementById("vehicleBackupStatus"),
         vehicleList: document.getElementById("vehicleList"),
         newDriverName: document.getElementById("newDriverName"),
         addDriverBtn: document.getElementById("addDriverBtn"),
+        saveDriverBackupBtn: document.getElementById("saveDriverBackupBtn"),
+        restoreDriverBackupBtn: document.getElementById("restoreDriverBackupBtn"),
+        deleteDriverBackupBtn: document.getElementById("deleteDriverBackupBtn"),
+        driverBackupStatus: document.getElementById("driverBackupStatus"),
         driverList: document.getElementById("driverList"),
         newTruckType: document.getElementById("newTruckType"),
         addTruckTypeBtn: document.getElementById("addTruckTypeBtn"),
@@ -1031,7 +1074,11 @@
         const mm = String(d.getMinutes()).padStart(2, "0");
         return `${y}-${m}-${day} ${hh}:${mm}`;
       };
-      const normalizeTruckType = (type) => type === TRUCK_TYPES.TEN10 ? TRUCK_TYPES.TEN10 : TRUCK_TYPES.LOW12;
+      const normalizeTruckType = (type) => {
+        if (type === TRUCK_TYPES.TEN10) return TRUCK_TYPES.TEN10;
+        if (type === TRUCK_TYPES.FOURTON6) return TRUCK_TYPES.FOURTON6;
+        return TRUCK_TYPES.LOW12;
+      };
       const truckTypeLabel = (type) => {
         const found = TRUCK_TYPE_CATALOG.find((item) => item.value === type);
         return found ? found.label : truckTypeLabel(normalizeTruckType(type));
@@ -1042,7 +1089,12 @@
         const layout = getLayout(type);
         return layout.left.concat(layout.right).flat();
       };
-      const displayMapFor = (type) => normalizeTruckType(type) === TRUCK_TYPES.TEN10 ? DISPLAY_MAP_10 : DISPLAY_MAP_12;
+      const displayMapFor = (type) => {
+        const normalized = normalizeTruckType(type);
+        if (normalized === TRUCK_TYPES.TEN10) return DISPLAY_MAP_10;
+        if (normalized === TRUCK_TYPES.FOURTON6) return DISPLAY_MAP_6;
+        return DISPLAY_MAP_12;
+      };
       const circle = (id, type = TRUCK_TYPES.LOW12) => displayMapFor(type)[id - 1] || String(id);
 
       const newTire = () => ({ maker: "", type: "", groove: "", wear: "", damage: "", pressure: "" });
@@ -1110,12 +1162,19 @@
         const sorted = sortTruckTypes(uniq);
         return sorted.length > 0 ? sorted : sortTruckTypes(TRUCK_TYPE_CATALOG.map((item) => item.value));
       };
+      const emptyBackupMeta = () => ({
+        [SETTINGS_BACKUP_KIND.VEHICLES]: null,
+        [SETTINGS_BACKUP_KIND.DRIVERS]: null
+      });
 
       let current = normalizeCurrent(read(STORAGE.current, defaultCurrent()));
       let previous = normalizePrevious(read(STORAGE.previous, null));
       let vehicles = normalizeVehicles(read(STORAGE.vehicles, []));
       let drivers = normalizeVehicles(read(STORAGE.drivers, []));
       let truckTypes = normalizeTruckTypes(read(STORAGE.truckTypes, TRUCK_TYPE_CATALOG.map((item) => item.value)));
+      let settingsBackupMeta = emptyBackupMeta();
+      let settingsBackupLoading = false;
+      let settingsBackupWorking = false;
       let latestCommitPushedAt = LAST_COMMIT_PUSHED_AT;
       let latestCommitFetchedAtMs = 0;
       let latestCommitFetchPromise = null;
@@ -1394,6 +1453,272 @@
         });
       }
 
+      function normalizeBackupKind(kind) {
+        if (kind === SETTINGS_BACKUP_KIND.VEHICLES) return SETTINGS_BACKUP_KIND.VEHICLES;
+        if (kind === SETTINGS_BACKUP_KIND.DRIVERS) return SETTINGS_BACKUP_KIND.DRIVERS;
+        return "";
+      }
+
+      function backupKindLabel(kind) {
+        if (kind === SETTINGS_BACKUP_KIND.VEHICLES) return "車両番号";
+        if (kind === SETTINGS_BACKUP_KIND.DRIVERS) return "乗務員";
+        return "";
+      }
+
+      function hasSettingsBackupApi() {
+        if (!window.FirebaseCloudSync) return false;
+        if (typeof window.FirebaseCloudSync.saveSettingsBackup !== "function") return false;
+        if (typeof window.FirebaseCloudSync.loadSettingsBackup !== "function") return false;
+        if (typeof window.FirebaseCloudSync.deleteSettingsBackup !== "function") return false;
+        return true;
+      }
+
+      function currentBackupStatusText(entry) {
+        if (!entry) return "未保存";
+        const rawCount = Number(entry.valueCount);
+        const count = Number.isFinite(rawCount) && rawCount >= 0
+          ? Math.floor(rawCount)
+          : (Array.isArray(entry.values) ? entry.values.length : 0);
+        const sourceTime = entry.serverUpdatedAt || entry.clientUpdatedAt || "";
+        const time = formatDateTimeMinute(sourceTime) || "時刻不明";
+        return `${time} / ${count}件`;
+      }
+
+      function setBackupMeta(kind, backup) {
+        const normalizedKind = normalizeBackupKind(kind);
+        if (!normalizedKind) return;
+        settingsBackupMeta = {
+          ...settingsBackupMeta,
+          [normalizedKind]: backup && typeof backup === "object" ? { ...backup } : null
+        };
+      }
+
+      function renderBackupStatus(statusEl, kind) {
+        if (!statusEl) return;
+        const apiReady = hasSettingsBackupApi();
+        if (!apiReady) {
+          statusEl.textContent = "バックアップ: Firebase未設定";
+          return;
+        }
+        if (settingsBackupLoading) {
+          statusEl.textContent = "バックアップ: 読み込み中...";
+          return;
+        }
+        statusEl.textContent = `バックアップ: ${currentBackupStatusText(settingsBackupMeta[kind])}`;
+      }
+
+      function renderSettingsBackups() {
+        const apiReady = hasSettingsBackupApi();
+        const disabledBase = settingsBackupWorking || !apiReady;
+
+        if (el.saveVehicleBackupBtn) el.saveVehicleBackupBtn.disabled = disabledBase;
+        if (el.restoreVehicleBackupBtn) {
+          el.restoreVehicleBackupBtn.disabled = disabledBase || !settingsBackupMeta[SETTINGS_BACKUP_KIND.VEHICLES];
+        }
+        if (el.saveDriverBackupBtn) el.saveDriverBackupBtn.disabled = disabledBase;
+        if (el.restoreDriverBackupBtn) {
+          el.restoreDriverBackupBtn.disabled = disabledBase || !settingsBackupMeta[SETTINGS_BACKUP_KIND.DRIVERS];
+        }
+
+        if (el.deleteVehicleBackupBtn) {
+          el.deleteVehicleBackupBtn.disabled = disabledBase || !settingsBackupMeta[SETTINGS_BACKUP_KIND.VEHICLES];
+        }
+        if (el.deleteDriverBackupBtn) {
+          el.deleteDriverBackupBtn.disabled = disabledBase || !settingsBackupMeta[SETTINGS_BACKUP_KIND.DRIVERS];
+        }
+
+        renderBackupStatus(el.vehicleBackupStatus, SETTINGS_BACKUP_KIND.VEHICLES);
+        renderBackupStatus(el.driverBackupStatus, SETTINGS_BACKUP_KIND.DRIVERS);
+      }
+
+      async function refreshSettingsBackups() {
+        if (!hasSettingsBackupApi()) {
+          settingsBackupMeta = emptyBackupMeta();
+          renderSettingsBackups();
+          return;
+        }
+
+        settingsBackupLoading = true;
+        renderSettingsBackups();
+        const nextMeta = emptyBackupMeta();
+        try {
+          for (const kind of Object.values(SETTINGS_BACKUP_KIND)) {
+            const result = await window.FirebaseCloudSync.loadSettingsBackup(kind, SETTINGS_BACKUP_SLOT, { metadataOnly: true });
+            if (result && result.ok && result.backup) {
+              nextMeta[kind] = result.backup;
+              continue;
+            }
+            if (result && result.reason === "not_found") {
+              nextMeta[kind] = null;
+              continue;
+            }
+            console.warn(`Failed to load backup metadata (${kind})`, result);
+          }
+        } catch (error) {
+          console.warn("Failed to refresh settings backups:", error);
+        } finally {
+          settingsBackupMeta = nextMeta;
+          settingsBackupLoading = false;
+          renderSettingsBackups();
+        }
+      }
+
+      function backupReasonMessage(reason, mode) {
+        if (reason === "not_found") return mode === "delete" ? "削除対象のバックアップがありません" : "バックアップは未保存です";
+        if (reason === "offline") return "オフラインのためFirebaseに接続できません";
+        if (reason === "firebase_unready") return "Firebaseの接続準備が完了していません";
+        if (reason === "permission_denied") return "Firebase権限エラーです（Firestoreルールを確認してください）";
+        if (reason === "unauthenticated") return "匿名認証が無効です（Firebase Authenticationで匿名認証を有効化してください）";
+        if (reason === "failed_precondition") return "Firestore未作成の可能性があります（Firebase ConsoleでFirestoreを作成してください）";
+        if (reason === "empty_values") return "バックアップ対象のデータがありません";
+        if (mode === "save") return "バックアップ保存に失敗しました";
+        if (mode === "restore") return "バックアップ復元に失敗しました";
+        if (mode === "delete") return "バックアップ削除に失敗しました";
+        return "バックアップ処理に失敗しました";
+      }
+
+      function backupValuesForKind(kind) {
+        if (kind === SETTINGS_BACKUP_KIND.VEHICLES) return normalizeVehicles(vehicles);
+        if (kind === SETTINGS_BACKUP_KIND.DRIVERS) return normalizeVehicles(drivers);
+        return [];
+      }
+
+      async function saveSettingsBackup(kind) {
+        const normalizedKind = normalizeBackupKind(kind);
+        if (!normalizedKind) return;
+        if (!hasSettingsBackupApi()) {
+          showToast("Firebaseバックアップを利用できません");
+          return;
+        }
+        const values = backupValuesForKind(normalizedKind);
+        if (!values.length) {
+          showToast("バックアップ対象のデータがありません");
+          return;
+        }
+
+        settingsBackupWorking = true;
+        renderSettingsBackups();
+        try {
+          const result = await window.FirebaseCloudSync.saveSettingsBackup(
+            normalizedKind,
+            SETTINGS_BACKUP_SLOT,
+            values,
+            { source: "settings" }
+          );
+          if (!result || !result.ok) {
+            console.warn("Settings backup save failed result:", result);
+            showToast(backupReasonMessage(result && result.reason, "save"));
+            return;
+          }
+          setBackupMeta(normalizedKind, result.backup);
+          showToast(`${backupKindLabel(normalizedKind)}をバックアップ保存しました`);
+        } catch (error) {
+          console.warn("Failed to save settings backup:", error);
+          showToast("バックアップ保存に失敗しました");
+        } finally {
+          settingsBackupWorking = false;
+          renderSettingsBackups();
+        }
+      }
+
+      function applyRestoredSettingsBackup(kind, values) {
+        if (kind === SETTINGS_BACKUP_KIND.VEHICLES) {
+          vehicles = normalizeVehicles(values);
+          saveVehicles();
+          if (current.vehicleNumber && !vehicles.includes(current.vehicleNumber)) {
+            current.vehicleNumber = "";
+            saveCurrent();
+          }
+          return;
+        }
+        if (kind === SETTINGS_BACKUP_KIND.DRIVERS) {
+          drivers = normalizeVehicles(values);
+          saveDrivers();
+          if (current.driverName && !drivers.includes(current.driverName)) {
+            current.driverName = "";
+            saveCurrent();
+          }
+          return;
+        }
+      }
+
+      async function restoreSettingsBackup(kind) {
+        const normalizedKind = normalizeBackupKind(kind);
+        if (!normalizedKind) return;
+        if (!hasSettingsBackupApi()) {
+          showToast("Firebaseバックアップを利用できません");
+          return;
+        }
+        if (!settingsBackupMeta[normalizedKind]) {
+          showToast("バックアップは未保存です");
+          return;
+        }
+
+        const confirmed = window.confirm(
+          `${backupKindLabel(normalizedKind)}をバックアップから復元します。現在の登録内容は上書きされます。よろしいですか？`
+        );
+        if (!confirmed) return;
+
+        settingsBackupWorking = true;
+        renderSettingsBackups();
+        try {
+          const result = await window.FirebaseCloudSync.loadSettingsBackup(normalizedKind, SETTINGS_BACKUP_SLOT);
+          if (!result || !result.ok || !result.backup) {
+            console.warn("Settings backup restore failed result:", result);
+            showToast(backupReasonMessage(result && result.reason, "restore"));
+            return;
+          }
+          const backupValues = Array.isArray(result.backup.values) ? result.backup.values : [];
+          applyRestoredSettingsBackup(normalizedKind, backupValues);
+          setBackupMeta(normalizedKind, result.backup);
+          renderAll();
+          showToast(`${backupKindLabel(normalizedKind)}をバックアップから復元しました`);
+        } catch (error) {
+          console.warn("Failed to restore settings backup:", error);
+          showToast("バックアップ復元に失敗しました");
+        } finally {
+          settingsBackupWorking = false;
+          renderSettingsBackups();
+        }
+      }
+
+      async function deleteSettingsBackup(kind) {
+        const normalizedKind = normalizeBackupKind(kind);
+        if (!normalizedKind) return;
+        if (!hasSettingsBackupApi()) {
+          showToast("Firebaseバックアップを利用できません");
+          return;
+        }
+        if (!settingsBackupMeta[normalizedKind]) {
+          showToast("削除対象のバックアップがありません");
+          return;
+        }
+
+        const confirmed = window.confirm(
+          `${backupKindLabel(normalizedKind)}のバックアップを削除します。よろしいですか？`
+        );
+        if (!confirmed) return;
+
+        settingsBackupWorking = true;
+        renderSettingsBackups();
+        try {
+          const result = await window.FirebaseCloudSync.deleteSettingsBackup(normalizedKind, SETTINGS_BACKUP_SLOT);
+          if (!result || !result.ok) {
+            console.warn("Settings backup delete failed result:", result);
+            showToast(backupReasonMessage(result && result.reason, "delete"));
+            return;
+          }
+          setBackupMeta(normalizedKind, null);
+          showToast(`${backupKindLabel(normalizedKind)}のバックアップを削除しました`);
+        } catch (error) {
+          console.warn("Failed to delete settings backup:", error);
+          showToast("バックアップ削除に失敗しました");
+        } finally {
+          settingsBackupWorking = false;
+          renderSettingsBackups();
+        }
+      }
+
       function renderSettings() {
         const mode = document.body.getAttribute("data-theme") === "dark" ? "dark" : "light";
         el.themeMode.value = mode;
@@ -1402,6 +1727,7 @@
         renderDriverList();
         renderTruckTypeCatalogSelect();
         renderTruckTypeList();
+        renderSettingsBackups();
       }
 
       function renderMeta() {
@@ -1488,6 +1814,7 @@
         void refreshLatestCommitPushedAt();
         renderSettings();
         setFlowScreen(FLOW_SCREENS.SETTINGS);
+        void refreshSettingsBackups();
       }
 
       function closeSettingsDialog() {
@@ -2141,6 +2468,24 @@
           addDriverName();
         });
         el.addTruckTypeBtn.addEventListener("click", addTruckType);
+        el.saveVehicleBackupBtn.addEventListener("click", () => {
+          void saveSettingsBackup(SETTINGS_BACKUP_KIND.VEHICLES);
+        });
+        el.restoreVehicleBackupBtn.addEventListener("click", () => {
+          void restoreSettingsBackup(SETTINGS_BACKUP_KIND.VEHICLES);
+        });
+        el.deleteVehicleBackupBtn.addEventListener("click", () => {
+          void deleteSettingsBackup(SETTINGS_BACKUP_KIND.VEHICLES);
+        });
+        el.saveDriverBackupBtn.addEventListener("click", () => {
+          void saveSettingsBackup(SETTINGS_BACKUP_KIND.DRIVERS);
+        });
+        el.restoreDriverBackupBtn.addEventListener("click", () => {
+          void restoreSettingsBackup(SETTINGS_BACKUP_KIND.DRIVERS);
+        });
+        el.deleteDriverBackupBtn.addEventListener("click", () => {
+          void deleteSettingsBackup(SETTINGS_BACKUP_KIND.DRIVERS);
+        });
         el.vehicleList.addEventListener("click", (ev) => {
           const target = ev.target;
           if (!(target instanceof HTMLButtonElement)) return;

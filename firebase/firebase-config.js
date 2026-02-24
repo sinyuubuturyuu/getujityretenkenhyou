@@ -17,6 +17,8 @@
     enabled: true,
     // Firestore collection name
     collection: "monthly_tire_autosave",
+    // Reuse existing collection to avoid additional Firestore rules setup
+    settingsBackupCollection: "monthly_tire_autosave",
     // Prefix for document id
     documentPrefix: "monthly_tire",
     // Company identifier for future access control

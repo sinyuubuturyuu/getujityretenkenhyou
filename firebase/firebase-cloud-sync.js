@@ -5,6 +5,12 @@
   const PENDING_KEY = "tire.monthly.cloud.pending.v1";
   const DEVICE_ID_KEY = "tire.monthly.cloud.device.v1";
   const MAX_PENDING = 200;
+  const SETTINGS_BACKUP_KIND = {
+    VEHICLES: "vehicles",
+    DRIVERS: "drivers",
+    TRUCK_TYPES: "truckTypes"
+  };
+  const SETTINGS_BACKUP_SLOT = 1;
 
   const state = {
     options: null,
@@ -151,6 +157,59 @@
     return String(value ?? "").trim();
   }
 
+  function normalizeSettingsBackupKind(kind) {
+    if (kind === SETTINGS_BACKUP_KIND.VEHICLES) return SETTINGS_BACKUP_KIND.VEHICLES;
+    if (kind === SETTINGS_BACKUP_KIND.DRIVERS) return SETTINGS_BACKUP_KIND.DRIVERS;
+    if (kind === SETTINGS_BACKUP_KIND.TRUCK_TYPES) return SETTINGS_BACKUP_KIND.TRUCK_TYPES;
+    return "";
+  }
+
+  function normalizeSettingsBackupSlot(slot) {
+    const num = Number(slot);
+    if (!Number.isInteger(num)) return 0;
+    return num === SETTINGS_BACKUP_SLOT ? SETTINGS_BACKUP_SLOT : 0;
+  }
+
+  function normalizeSettingsBackupValues(rows) {
+    if (!Array.isArray(rows)) return [];
+    const uniq = [];
+    rows.forEach((item) => {
+      const value = String(item ?? "").trim();
+      if (!value) return;
+      if (!uniq.includes(value)) uniq.push(value);
+    });
+    return uniq.slice(0, 300);
+  }
+
+  function toIsoOrEmpty(value) {
+    if (!value) return "";
+    if (typeof value === "string") {
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+    }
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? "" : value.toISOString();
+    }
+    if (value && typeof value.toDate === "function") {
+      const d = value.toDate();
+      return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+    }
+    return "";
+  }
+
+  function toFirestoreReason(error, fallback) {
+    const code = String(error && error.code ? error.code : "").toLowerCase();
+    const message = String(error && error.message ? error.message : "").toLowerCase();
+    const text = `${code} ${message}`;
+    if (text.includes("permission-denied")) return "permission_denied";
+    if (text.includes("unauthenticated")) return "unauthenticated";
+    if (text.includes("failed-precondition")) return "failed_precondition";
+    if (text.includes("unavailable") || text.includes("network")) return "offline";
+    const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+    if (offline) return "offline";
+    return fallback;
+  }
+
   function hashText(value) {
     // FNV-1a 32-bit hash (deterministic, compact id key)
     let hash = 0x811c9dc5;
@@ -212,6 +271,20 @@
     if (!state.db) return null;
     const docInfo = getDocInfoForEntry(entry);
     return state.db.collection(state.options.collection).doc(docInfo.docId);
+  }
+
+  function buildSettingsBackupDocId(kind, slot) {
+    const prefix = sanitizeId(state.options.documentPrefix, "monthly_tire");
+    const company = sanitizeId(state.options.companyCode, "company");
+    const safeKind = sanitizeId(kind, "settings");
+    const safeSlot = sanitizeId(String(slot), "1");
+    return `${prefix}_${company}_settings_backup_${safeKind}_slot${safeSlot}`.slice(0, 200);
+  }
+
+  function getSettingsBackupDocRef(kind, slot) {
+    if (!state.db) return null;
+    const collection = sanitizeId(state.options.settingsBackupCollection, "monthly_tire_settings_backup");
+    return state.db.collection(collection).doc(buildSettingsBackupDocId(kind, slot));
   }
 
   async function ensureFirebaseReady() {
@@ -291,8 +364,145 @@
       } else {
         warn("Firestore write failed (local queue disabled)", error);
       }
-      const offline = typeof navigator !== "undefined" && navigator.onLine === false;
-      return { ok: false, reason: offline ? "offline" : "write_failed", queued: allowLocalQueue };
+      return { ok: false, reason: toFirestoreReason(error, "write_failed"), queued: allowLocalQueue };
+    }
+  }
+
+  function normalizeSettingsBackupDoc(kind, slot, data, metadataOnly) {
+    if (!data || typeof data !== "object") return null;
+    const values = normalizeSettingsBackupValues(data.values);
+    const valueCount = Number(data.valueCount);
+    return {
+      kind: normalizeSettingsBackupKind(data.kind) || kind,
+      slot: normalizeSettingsBackupSlot(data.slot) || slot,
+      valueCount: Number.isFinite(valueCount) && valueCount >= 0 ? valueCount : values.length,
+      values: metadataOnly ? [] : values,
+      clientUpdatedAt: toIsoOrEmpty(data.clientUpdatedAt),
+      serverUpdatedAt: toIsoOrEmpty(data.updatedAt)
+    };
+  }
+
+  async function saveSettingsBackup(kind, slot, values, meta) {
+    const normalizedKind = normalizeSettingsBackupKind(kind);
+    const normalizedSlot = normalizeSettingsBackupSlot(slot);
+    if (!normalizedKind || !normalizedSlot) {
+      return { ok: false, reason: "invalid_target", backup: null };
+    }
+    const normalizedValues = normalizeSettingsBackupValues(values);
+    if (!normalizedValues.length) {
+      return { ok: false, reason: "empty_values", backup: null };
+    }
+
+    const ready = await ensureFirebaseReady();
+    const docRef = getSettingsBackupDocRef(normalizedKind, normalizedSlot);
+    if (!ready || !docRef || !state.firebase) {
+      return { ok: false, reason: "firebase_unready", backup: null };
+    }
+
+    const nowIso = new Date().toISOString();
+    const payload = {
+      companyCode: state.options.companyCode,
+      kind: normalizedKind,
+      slot: normalizedSlot,
+      values: normalizedValues,
+      valueCount: normalizedValues.length,
+      clientUpdatedAt: nowIso,
+      updatedAt: state.firebase.firestore.FieldValue.serverTimestamp(),
+      updatedByUid: state.uid || "anon",
+      updatedByDeviceId: state.deviceId || "",
+      meta: meta && typeof meta === "object" ? deepClone(meta) : {}
+    };
+
+    try {
+      await docRef.set(payload, { merge: true });
+      return {
+        ok: true,
+        reason: "ok",
+        backup: {
+          kind: normalizedKind,
+          slot: normalizedSlot,
+          valueCount: normalizedValues.length,
+          values: normalizedValues,
+          clientUpdatedAt: nowIso,
+          serverUpdatedAt: ""
+        }
+      };
+    } catch (error) {
+      warn("Settings backup save failed", error);
+      return { ok: false, reason: toFirestoreReason(error, "write_failed"), backup: null };
+    }
+  }
+
+  async function loadSettingsBackup(kind, slot, options) {
+    const metadataOnly = Boolean(options && options.metadataOnly === true);
+    const normalizedKind = normalizeSettingsBackupKind(kind);
+    const normalizedSlot = normalizeSettingsBackupSlot(slot);
+    if (!normalizedKind || !normalizedSlot) {
+      return { ok: false, reason: "invalid_target", backup: null };
+    }
+
+    const ready = await ensureFirebaseReady();
+    const docRef = getSettingsBackupDocRef(normalizedKind, normalizedSlot);
+    if (!ready || !docRef) {
+      return { ok: false, reason: "firebase_unready", backup: null };
+    }
+
+    try {
+      const snap = await docRef.get();
+      if (!snap.exists) {
+        return { ok: false, reason: "not_found", backup: null };
+      }
+      const backup = normalizeSettingsBackupDoc(normalizedKind, normalizedSlot, snap.data(), metadataOnly);
+      if (!backup) {
+        return { ok: false, reason: "invalid_data", backup: null };
+      }
+      return { ok: true, reason: "ok", backup };
+    } catch (error) {
+      warn("Settings backup load failed", error);
+      return { ok: false, reason: toFirestoreReason(error, "read_failed"), backup: null };
+    }
+  }
+
+  async function listSettingsBackups(kind) {
+    const normalizedKind = normalizeSettingsBackupKind(kind);
+    if (!normalizedKind) {
+      return { ok: false, reason: "invalid_target", backups: [] };
+    }
+    const result = await loadSettingsBackup(normalizedKind, SETTINGS_BACKUP_SLOT, { metadataOnly: true });
+    if (!result.ok && result.reason !== "not_found") {
+      return { ok: false, reason: result.reason || "read_failed", backups: [] };
+    }
+    const backup = result.ok ? result.backup : null;
+    return {
+      ok: true,
+      reason: "ok",
+      backups: [backup]
+    };
+  }
+
+  async function deleteSettingsBackup(kind, slot) {
+    const normalizedKind = normalizeSettingsBackupKind(kind);
+    const normalizedSlot = normalizeSettingsBackupSlot(slot);
+    if (!normalizedKind || !normalizedSlot) {
+      return { ok: false, reason: "invalid_target" };
+    }
+
+    const ready = await ensureFirebaseReady();
+    const docRef = getSettingsBackupDocRef(normalizedKind, normalizedSlot);
+    if (!ready || !docRef) {
+      return { ok: false, reason: "firebase_unready" };
+    }
+
+    try {
+      const snap = await docRef.get();
+      if (!snap.exists) {
+        return { ok: false, reason: "not_found" };
+      }
+      await docRef.delete();
+      return { ok: true, reason: "ok" };
+    } catch (error) {
+      warn("Settings backup delete failed", error);
+      return { ok: false, reason: toFirestoreReason(error, "delete_failed") };
     }
   }
 
@@ -369,6 +579,7 @@
     state.options = Object.assign({
       enabled: false,
       collection: "monthly_tire_autosave",
+      settingsBackupCollection: "monthly_tire_settings_backup",
       documentPrefix: "monthly_tire",
       companyCode: "company",
       useAnonymousAuth: true,
@@ -403,6 +614,10 @@
     schedule,
     saveNow,
     saveNowDetailed,
+    saveSettingsBackup,
+    loadSettingsBackup,
+    listSettingsBackups,
+    deleteSettingsBackup,
     clearPendingQueue: () => setPendingQueue([]),
     previewDocInfo: () => {
       if (typeof state.getPayload !== "function") return null;
