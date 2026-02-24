@@ -272,22 +272,27 @@
     };
   }
 
-  async function writeEntry(entry) {
+  async function writeEntry(entry, options) {
+    const allowLocalQueue = !options || options.allowLocalQueue !== false;
     const ready = await ensureFirebaseReady();
     const docRef = getDocRefForEntry(entry);
     if (!ready || !docRef) {
-      pushPending(entry);
-      return { ok: false, reason: "firebase_unready", queued: true };
+      if (allowLocalQueue) pushPending(entry);
+      return { ok: false, reason: "firebase_unready", queued: allowLocalQueue };
     }
     try {
       log("Saving document", getDocInfoForEntry(entry));
       await docRef.set(toDocData(entry), { merge: true });
       return { ok: true, reason: "ok", queued: false };
     } catch (error) {
-      warn("Firestore write failed, queued locally for retry", error);
-      pushPending(entry);
+      if (allowLocalQueue) {
+        warn("Firestore write failed, queued locally for retry", error);
+        pushPending(entry);
+      } else {
+        warn("Firestore write failed (local queue disabled)", error);
+      }
       const offline = typeof navigator !== "undefined" && navigator.onLine === false;
-      return { ok: false, reason: offline ? "offline" : "write_failed", queued: true };
+      return { ok: false, reason: offline ? "offline" : "write_failed", queued: allowLocalQueue };
     }
   }
 
@@ -327,12 +332,12 @@
     }, 700);
   }
 
-  async function saveNow(source) {
-    const result = await saveNowDetailed(source);
+  async function saveNow(source, options) {
+    const result = await saveNowDetailed(source, options);
     return result.ok;
   }
 
-  async function saveNowDetailed(source) {
+  async function saveNowDetailed(source, options) {
     if (!state.initialized || !state.options || !state.options.enabled) {
       return { ok: false, reason: "disabled", queued: false };
     }
@@ -345,7 +350,7 @@
       clientUpdatedAt: new Date().toISOString(),
       payload
     };
-    const result = await writeEntry(entry);
+    const result = await writeEntry(entry, options || {});
     if (result.ok) void flushPending();
     return result;
   }
@@ -398,6 +403,7 @@
     schedule,
     saveNow,
     saveNowDetailed,
+    clearPendingQueue: () => setPendingQueue([]),
     previewDocInfo: () => {
       if (typeof state.getPayload !== "function") return null;
       const payload = deepClone(state.getPayload());

@@ -1709,7 +1709,8 @@
         previous = previousSnapshot;
         localStorage.removeItem(STORAGE.previous);
         if (window.FirebaseCloudSync && typeof window.FirebaseCloudSync.saveNowDetailed === "function") {
-          const cloudResult = await window.FirebaseCloudSync.saveNowDetailed("submit");
+          window.FirebaseCloudSync.clearPendingQueue && window.FirebaseCloudSync.clearPendingQueue();
+          const cloudResult = await window.FirebaseCloudSync.saveNowDetailed("submit", { allowLocalQueue: false });
           if (!cloudResult.ok && cloudResult.reason !== "disabled" && cloudResult.reason !== "payload_missing") {
             renderAll();
             if (cloudResult.reason === "offline") {
@@ -1721,7 +1722,8 @@
             return;
           }
         } else if (window.FirebaseCloudSync && typeof window.FirebaseCloudSync.saveNow === "function") {
-          const cloudSaved = await window.FirebaseCloudSync.saveNow("submit");
+          window.FirebaseCloudSync.clearPendingQueue && window.FirebaseCloudSync.clearPendingQueue();
+          const cloudSaved = await window.FirebaseCloudSync.saveNow("submit", { allowLocalQueue: false });
           if (!cloudSaved) {
             renderAll();
             window.alert("Firebaseに保存できませんでした。通信状態を確認して、もう一度「送信」を押してください。");
