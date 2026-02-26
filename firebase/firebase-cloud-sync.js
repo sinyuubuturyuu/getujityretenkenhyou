@@ -271,6 +271,18 @@
     return state.db.collection(state.options.collection).doc(docInfo.docId);
   }
 
+  function buildLatestStateDocId(deviceId) {
+    const prefix = sanitizeId(state.options.documentPrefix, "monthly_tire");
+    const company = sanitizeId(state.options.companyCode, "company");
+    const device = sanitizeId(deviceId || state.deviceId || getOrCreateDeviceId(), "device");
+    return `${prefix}_${company}_latest_${device}`.slice(0, 200);
+  }
+
+  function getLatestStateDocRef(deviceId) {
+    if (!state.db) return null;
+    return state.db.collection(state.options.collection).doc(buildLatestStateDocId(deviceId));
+  }
+
   function buildSettingsBackupDocId(kind, slot) {
     const prefix = sanitizeId(state.options.documentPrefix, "monthly_tire");
     const company = sanitizeId(state.options.companyCode, "company");
@@ -353,7 +365,27 @@
     }
     try {
       log("Saving document", getDocInfoForEntry(entry));
+      const docInfo = getDocInfoForEntry(entry);
       await docRef.set(toDocData(entry), { merge: true });
+
+      // Keep a device-specific pointer document so clients can fetch previous data
+      // without relying on collection queries.
+      try {
+        const latestRef = getLatestStateDocRef(docInfo.deviceId);
+        if (latestRef && state.firebase) {
+          await latestRef.set({
+            companyCode: state.options.companyCode,
+            deviceId: docInfo.deviceId,
+            latestDocId: docInfo.docId,
+            lastSource: entry.source,
+            clientUpdatedAt: entry.clientUpdatedAt,
+            updatedAt: state.firebase.firestore.FieldValue.serverTimestamp(),
+            state: entry.payload
+          }, { merge: true });
+        }
+      } catch (latestError) {
+        warn("Latest state pointer write failed", latestError);
+      }
       return { ok: true, reason: "ok", queued: false };
     } catch (error) {
       if (allowLocalQueue) {
@@ -521,6 +553,22 @@
     const sameDevice = (row) => String(row && row.deviceId ? row.deviceId : "") === String(currentDeviceId || "");
 
     try {
+      const latestRef = getLatestStateDocRef(currentDeviceId);
+      if (latestRef) {
+        const latestSnap = await latestRef.get();
+        if (latestSnap && latestSnap.exists) {
+          const latestData = latestSnap.data() || {};
+          if (hasState(latestData) && sameCompany(latestData)) {
+            return {
+              ok: true,
+              reason: "ok",
+              state: deepClone(latestData.state),
+              clientUpdatedAt: toIsoOrEmpty(latestData.clientUpdatedAt)
+            };
+          }
+        }
+      }
+
       const snap = await state.db
         .collection(state.options.collection)
         .orderBy("clientUpdatedAt", "desc")
