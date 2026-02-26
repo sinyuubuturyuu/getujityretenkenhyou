@@ -241,20 +241,18 @@
 
   function buildBasicSignature(entry) {
     const basic = extractBasicInfo(entry);
-    const inspectionMonth = extractInspectionMonth(entry);
-    // Use month-level identity so day changes update the same document.
-    const raw = [inspectionMonth, basic.driverName, basic.vehicleNumber, basic.truckType].join("|");
+    const raw = [basic.inspectionDate, basic.driverName, basic.vehicleNumber, basic.truckType].join("|");
     return hashText(raw);
   }
 
-  function buildDocId(monthKey, basicSignature) {
+  function buildDocId(uid, monthKey, basicSignature, deviceId) {
     const prefix = sanitizeId(state.options.documentPrefix, "monthly_tire");
     const company = sanitizeId(state.options.companyCode, "company");
+    const user = sanitizeId(uid, "anon");
+    const device = sanitizeId(deviceId || state.deviceId, "device");
     const month = sanitizeId(monthKey, currentMonthKey());
     const basic = sanitizeId(basicSignature, "basic");
-    // Doc identity is month + basic fields only.
-    // UID/device are stored as metadata, not as identity keys.
-    return `${prefix}_${company}_${month}_${basic}`.slice(0, 200);
+    return `${prefix}_${company}_${user}_${device}_${month}_${basic}`.slice(0, 200);
   }
 
   function getDocInfoForEntry(entry) {
@@ -263,7 +261,7 @@
     const deviceId = state.deviceId || getOrCreateDeviceId();
     const basicInfo = extractBasicInfo(entry);
     const basicSignature = buildBasicSignature(entry);
-    const docId = buildDocId(month, basicSignature);
+    const docId = buildDocId(uid, month, basicSignature, deviceId);
     return { month, uid, deviceId, basicInfo, basicSignature, docId };
   }
 

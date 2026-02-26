@@ -957,25 +957,25 @@
         SETTINGS: "settings"
       };
 
-      const DISPLAY_MAP_12 = ["①", "⑦", "②", "⑧", "③", "⑨", "④", "⑩", "⑤", "⑪", "⑥", "⑫"];
-      const DISPLAY_MAP_10 = ["①", "⑥", "②", "⑦", "③", "⑧", "④", "⑨", "⑤", "⑩"];
-      const DISPLAY_MAP_6 = ["①", "④", "②", "⑤", "③", "⑥"];
+      const DISPLAY_MAP_12 = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩", "⑪", "⑫"];
+      const DISPLAY_MAP_10 = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
+      const DISPLAY_MAP_6 = ["①", "②", "③", "④", "⑤", "⑥"];
       const ALL_IDS = Array.from({ length: 12 }, (_, i) => i + 1);
 
       const TRUCK_LAYOUTS = {
         [TRUCK_TYPES.LOW12]: {
-          left: [[1], [3], [5, 7], [9, 11]],
-          right: [[2], [4], [6, 8], [10, 12]],
+          left: [[1], [2], [3, 4], [5, 6]],
+          right: [[7], [8], [9, 10], [11, 12]],
           axes: ["前輪", "2軸", "3軸", "4軸"]
         },
         [TRUCK_TYPES.TEN10]: {
-          left: [[1], [3, 5], [7, 9]],
-          right: [[2], [4, 6], [8, 10]],
+          left: [[1], [2, 3], [4, 5]],
+          right: [[6], [7, 8], [9, 10]],
           axes: ["前輪", "2軸", "3軸"]
         },
         [TRUCK_TYPES.FOURTON6]: {
-          left: [[1], [3, 5]],
-          right: [[2], [4, 6]],
+          left: [[1], [2, 3]],
+          right: [[4], [5, 6]],
           axes: ["前輪", "2軸"]
         }
       };
@@ -2262,6 +2262,11 @@
         vehicles.sort((a, b) => a.localeCompare(b, "ja"));
         saveVehicles();
 
+        if (!current.vehicleNumber) {
+          current.vehicleNumber = value;
+          saveCurrent();
+        }
+
         el.newVehicleNumber.value = "";
         renderAll();
         showToast("車両番号を登録しました");
@@ -2276,7 +2281,7 @@
         saveVehicles();
 
         if (current.vehicleNumber === value) {
-          current.vehicleNumber = "";
+          current.vehicleNumber = vehicles[0] || "";
           saveCurrent();
         }
 
@@ -2299,6 +2304,11 @@
         drivers.sort((a, b) => a.localeCompare(b, "ja"));
         saveDrivers();
 
+        if (!current.driverName) {
+          current.driverName = value;
+          saveCurrent();
+        }
+
         el.newDriverName.value = "";
         renderAll();
         showToast("乗務員を登録しました");
@@ -2313,7 +2323,7 @@
         saveDrivers();
 
         if (current.driverName === value) {
-          current.driverName = "";
+          current.driverName = drivers[0] || "";
           saveCurrent();
         }
 
@@ -2561,6 +2571,8 @@
         bindMobileFitScale();
         void refreshLatestCommitPushedAt({ force: true });
         if (!current.inspectionDate) current.inspectionDate = today();
+        if (!current.driverName && drivers.length > 0) current.driverName = drivers[0];
+        if (!current.vehicleNumber && vehicles.length > 0) current.vehicleNumber = vehicles[0];
         if (!truckTypes.includes(current.truckType)) current.truckType = truckTypes[0] || TRUCK_TYPES.LOW12;
         currentScreen = FLOW_SCREENS.BASIC;
         buildTires();
