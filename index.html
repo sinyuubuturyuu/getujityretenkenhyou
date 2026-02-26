@@ -1141,6 +1141,24 @@
         if (!obj || typeof obj !== "object") return null;
         return normalizeCurrent(obj);
       };
+      const basicSignatureOf = (obj) => {
+        const source = obj && typeof obj === "object" ? obj : {};
+        return [
+          String(source.inspectionDate ?? "").trim(),
+          String(source.driverName ?? "").trim(),
+          String(source.vehicleNumber ?? "").trim(),
+          String(source.truckType ?? "").trim()
+        ].join("|");
+      };
+      const hasCompleteBasicInfo = (obj) => {
+        const source = obj && typeof obj === "object" ? obj : {};
+        return Boolean(
+          String(source.inspectionDate ?? "").trim()
+          && String(source.driverName ?? "").trim()
+          && String(source.vehicleNumber ?? "").trim()
+          && String(source.truckType ?? "").trim()
+        );
+      };
 
       const normalizeVehicles = (rows) => {
         if (!Array.isArray(rows)) return [];
@@ -1178,6 +1196,7 @@
       let latestCommitPushedAt = LAST_COMMIT_PUSHED_AT;
       let latestCommitFetchedAtMs = 0;
       let latestCommitFetchPromise = null;
+      let previousLookupToken = 0;
       let tireButtons = {};
       let dialog = { target: null, fields: [], step: 0 };
       let currentScreen = FLOW_SCREENS.BASIC;
@@ -1628,6 +1647,7 @@
           if (current.vehicleNumber && !vehicles.includes(current.vehicleNumber)) {
             current.vehicleNumber = "";
             saveCurrent();
+            void refreshPreviousFromCloud();
           }
           return;
         }
@@ -1637,6 +1657,7 @@
           if (current.driverName && !drivers.includes(current.driverName)) {
             current.driverName = "";
             saveCurrent();
+            void refreshPreviousFromCloud();
           }
           return;
         }
@@ -1751,18 +1772,48 @@
         return normalizePrevious(source);
       }
 
+      const previousForCurrentBasic = () => {
+        if (!previous) return null;
+        return basicSignatureOf(previous) === basicSignatureOf(current) ? previous : null;
+      };
+
       async function refreshPreviousFromCloud() {
-        if (!window.FirebaseCloudSync || typeof window.FirebaseCloudSync.loadLatestState !== "function") return;
-        try {
-          const result = await window.FirebaseCloudSync.loadLatestState({ limit: 60 });
-          if (!result || !result.ok || !result.state) return;
-          const nextPrevious = normalizePreviousFromCloudState(result.state);
-          if (!nextPrevious) return;
+        if (!hasCompleteBasicInfo(current)) {
+          if (el.inputDialog.open) renderStep();
+          return;
+        }
+        const cloudSync = window.FirebaseCloudSync;
+        if (!cloudSync) return;
+
+        const expectedSignature = basicSignatureOf(current);
+        const token = ++previousLookupToken;
+        const applyCloudState = (cloudState) => {
+          const nextPrevious = normalizePreviousFromCloudState(cloudState);
+          if (!nextPrevious) return false;
+          if (basicSignatureOf(nextPrevious) !== expectedSignature) return false;
           previous = nextPrevious;
           savePrevious();
-          if (el.inputDialog.open) renderStep();
+          return true;
+        };
+
+        try {
+          if (typeof cloudSync.loadStateForPayload === "function") {
+            const result = await cloudSync.loadStateForPayload(buildCloudPayload("lookup_previous"));
+            if (token !== previousLookupToken) return;
+            if (result && result.ok && result.state) applyCloudState(result.state);
+            if (el.inputDialog.open) renderStep();
+            return;
+          }
+          if (typeof cloudSync.loadLatestState === "function") {
+            const result = await cloudSync.loadLatestState({ limit: 120 });
+            if (token !== previousLookupToken) return;
+            if (result && result.ok && result.state) applyCloudState(result.state);
+            if (el.inputDialog.open) renderStep();
+          }
         } catch (error) {
+          if (token !== previousLookupToken) return;
           console.warn("Failed to load previous data from Firebase:", error);
+          if (el.inputDialog.open) renderStep();
         }
       }
 
@@ -1803,6 +1854,7 @@
         renderStep();
         if (typeof el.inputDialog.showModal === "function") el.inputDialog.showModal();
         else el.inputDialog.setAttribute("open", "");
+        void refreshPreviousFromCloud();
       }
 
       function closeDialog() {
@@ -1854,8 +1906,9 @@
       }
       const targetObj = () => dialog.target === "spare" ? current.spare : current.tires[dialog.target];
       const previousTargetObj = () => {
-        if (!previous) return null;
-        return dialog.target === "spare" ? previous.spare : previous.tires[dialog.target];
+        const matchedPrevious = previousForCurrentBasic();
+        if (!matchedPrevious) return null;
+        return dialog.target === "spare" ? matchedPrevious.spare : matchedPrevious.tires[dialog.target];
       };
 
       function renderStep() {
@@ -2099,6 +2152,7 @@
         buildTires();
         currentScreen = FLOW_SCREENS.BASIC;
         renderAll();
+        void refreshPreviousFromCloud();
         if (doToast) showToast("現在入力をリセットしました");
         return true;
       }
@@ -2243,6 +2297,7 @@
         current.driverName = next;
         saveCurrent();
         renderAll();
+        void refreshPreviousFromCloud();
       }
 
       function setVehicleNumber(number) {
@@ -2252,6 +2307,7 @@
         current.vehicleNumber = next;
         saveCurrent();
         renderAll();
+        void refreshPreviousFromCloud();
       }
 
       function setTruckType(type) {
@@ -2265,6 +2321,7 @@
         closeDialog();
         buildTires();
         renderAll();
+        void refreshPreviousFromCloud();
       }
 
       function addVehicleNumber() {
@@ -2285,6 +2342,7 @@
         if (!current.vehicleNumber) {
           current.vehicleNumber = value;
           saveCurrent();
+          void refreshPreviousFromCloud();
         }
 
         el.newVehicleNumber.value = "";
@@ -2303,6 +2361,7 @@
         if (current.vehicleNumber === value) {
           current.vehicleNumber = vehicles[0] || "";
           saveCurrent();
+          void refreshPreviousFromCloud();
         }
 
         renderAll();
@@ -2327,6 +2386,7 @@
         if (!current.driverName) {
           current.driverName = value;
           saveCurrent();
+          void refreshPreviousFromCloud();
         }
 
         el.newDriverName.value = "";
@@ -2345,6 +2405,7 @@
         if (current.driverName === value) {
           current.driverName = drivers[0] || "";
           saveCurrent();
+          void refreshPreviousFromCloud();
         }
 
         renderAll();
@@ -2370,6 +2431,7 @@
           saveCurrent();
           closeDialog();
           buildTires();
+          void refreshPreviousFromCloud();
         }
 
         renderAll();
@@ -2394,6 +2456,7 @@
           saveCurrent();
           closeDialog();
           buildTires();
+          void refreshPreviousFromCloud();
         }
 
         renderAll();
@@ -2450,6 +2513,7 @@
           current.inspectionDate = ev.target.value;
           saveCurrent();
           renderAll();
+          void refreshPreviousFromCloud();
         });
         el.basicNextBtn.addEventListener("click", () => {
           if (!isBasicInfoReady()) {
@@ -2602,6 +2666,7 @@
         bindEvents();
         saveCurrent();
         renderAll();
+        void refreshPreviousFromCloud();
         registerSW();
       }
 

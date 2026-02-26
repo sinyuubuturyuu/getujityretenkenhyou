@@ -561,6 +561,112 @@
     }
   }
 
+  async function loadStateForPayload(payload, options) {
+    const ready = await ensureFirebaseReady();
+    if (!ready || !state.db) {
+      return { ok: false, reason: "firebase_unready", state: null };
+    }
+    if (!payload || typeof payload !== "object") {
+      return { ok: false, reason: "invalid_payload", state: null };
+    }
+
+    const entry = {
+      source: "lookup",
+      clientUpdatedAt: new Date().toISOString(),
+      payload: deepClone(payload)
+    };
+    const docInfo = getDocInfoForEntry(entry);
+    const preferAnyDevice = Boolean(options && options.preferAnyDevice === true);
+    const companyCode = String(state.options && state.options.companyCode ? state.options.companyCode : "").trim();
+    const currentDeviceId = state.deviceId || getOrCreateDeviceId();
+
+    const hasState = (row) => Boolean(row && row.state && typeof row.state === "object");
+    const sameCompany = (row) => !companyCode || String(row && row.companyCode ? row.companyCode : "").trim() === companyCode;
+    const sameDevice = (row) => String(row && row.deviceId ? row.deviceId : "") === String(currentDeviceId || "");
+    const sameSignature = (row) => String(row && row.basicSignature ? row.basicSignature : "").trim() === docInfo.basicSignature;
+    const sameMonth = (row) => String(row && row.inspectionMonth ? row.inspectionMonth : "").trim() === docInfo.month;
+    const clientUpdatedMs = (row) => {
+      const ms = Date.parse(toIsoOrEmpty(row && row.clientUpdatedAt));
+      return Number.isFinite(ms) ? ms : -1;
+    };
+    const selectLatest = (rows) => {
+      let selected = null;
+      let selectedMs = -1;
+      rows.forEach((row) => {
+        const ms = clientUpdatedMs(row);
+        if (!selected || ms > selectedMs) {
+          selected = row;
+          selectedMs = ms;
+        }
+      });
+      return selected;
+    };
+
+    try {
+      if (!preferAnyDevice) {
+        const exactRef = getDocRefForEntry(entry);
+        if (exactRef) {
+          const exactSnap = await exactRef.get();
+          if (exactSnap && exactSnap.exists) {
+            const exactData = exactSnap.data() || {};
+            if (hasState(exactData) && sameCompany(exactData)) {
+              return {
+                ok: true,
+                reason: "ok",
+                state: deepClone(exactData.state),
+                clientUpdatedAt: toIsoOrEmpty(exactData.clientUpdatedAt)
+              };
+            }
+          }
+        }
+      }
+
+      const snap = await state.db
+        .collection(state.options.collection)
+        .where("basicSignature", "==", docInfo.basicSignature)
+        .limit(60)
+        .get();
+      if (!snap || snap.empty) {
+        return { ok: false, reason: "not_found", state: null };
+      }
+
+      const rows = [];
+      snap.forEach((doc) => {
+        rows.push(doc.data() || {});
+      });
+
+      const monthMatchedRows = rows.filter((row) => hasState(row) && sameCompany(row) && sameSignature(row) && sameMonth(row));
+      const signatureMatchedRows = rows.filter((row) => hasState(row) && sameCompany(row) && sameSignature(row));
+      let selected = null;
+
+      if (!preferAnyDevice && currentDeviceId) {
+        selected = selectLatest(monthMatchedRows.filter((row) => sameDevice(row)));
+      }
+      if (!selected) {
+        selected = selectLatest(monthMatchedRows);
+      }
+      if (!selected && !preferAnyDevice && currentDeviceId) {
+        selected = selectLatest(signatureMatchedRows.filter((row) => sameDevice(row)));
+      }
+      if (!selected) {
+        selected = selectLatest(signatureMatchedRows);
+      }
+      if (!selected) {
+        return { ok: false, reason: "not_found", state: null };
+      }
+
+      return {
+        ok: true,
+        reason: "ok",
+        state: deepClone(selected.state),
+        clientUpdatedAt: toIsoOrEmpty(selected.clientUpdatedAt)
+      };
+    } catch (error) {
+      warn("State load by payload failed", error);
+      return { ok: false, reason: toFirestoreReason(error, "read_failed"), state: null };
+    }
+  }
+
   async function flushPending() {
     if (state.flushing) return;
     state.flushing = true;
@@ -674,6 +780,7 @@
     listSettingsBackups,
     deleteSettingsBackup,
     loadLatestState,
+    loadStateForPayload,
     clearPendingQueue: () => setPendingQueue([]),
     previewDocInfo: () => {
       if (typeof state.getPayload !== "function") return null;
