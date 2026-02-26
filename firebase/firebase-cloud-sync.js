@@ -504,6 +504,63 @@
     }
   }
 
+  async function loadLatestState(options) {
+    const ready = await ensureFirebaseReady();
+    if (!ready || !state.db) {
+      return { ok: false, reason: "firebase_unready", state: null };
+    }
+
+    const rawLimit = Number(options && options.limit);
+    const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(Math.floor(rawLimit), 200)) : 40;
+    const preferAnyDevice = Boolean(options && options.preferAnyDevice === true);
+    const companyCode = String(state.options && state.options.companyCode ? state.options.companyCode : "").trim();
+    const currentDeviceId = state.deviceId || getOrCreateDeviceId();
+
+    const hasState = (row) => Boolean(row && row.state && typeof row.state === "object");
+    const sameCompany = (row) => !companyCode || String(row && row.companyCode ? row.companyCode : "").trim() === companyCode;
+    const sameDevice = (row) => String(row && row.deviceId ? row.deviceId : "") === String(currentDeviceId || "");
+
+    try {
+      const snap = await state.db
+        .collection(state.options.collection)
+        .orderBy("clientUpdatedAt", "desc")
+        .limit(limit)
+        .get();
+      if (!snap || snap.empty) {
+        return { ok: false, reason: "not_found", state: null };
+      }
+
+      const rows = [];
+      snap.forEach((doc) => {
+        rows.push(doc.data() || {});
+      });
+
+      let selected = null;
+      if (!preferAnyDevice && currentDeviceId) {
+        selected = rows.find((row) => hasState(row) && sameCompany(row) && sameDevice(row)) || null;
+      }
+      if (!selected) {
+        selected = rows.find((row) => hasState(row) && sameCompany(row)) || null;
+      }
+      if (!selected) {
+        selected = rows.find((row) => hasState(row)) || null;
+      }
+      if (!selected) {
+        return { ok: false, reason: "not_found", state: null };
+      }
+
+      return {
+        ok: true,
+        reason: "ok",
+        state: deepClone(selected.state),
+        clientUpdatedAt: toIsoOrEmpty(selected.clientUpdatedAt)
+      };
+    } catch (error) {
+      warn("Latest state load failed", error);
+      return { ok: false, reason: toFirestoreReason(error, "read_failed"), state: null };
+    }
+  }
+
   async function flushPending() {
     if (state.flushing) return;
     state.flushing = true;
@@ -616,6 +673,7 @@
     loadSettingsBackup,
     listSettingsBackups,
     deleteSettingsBackup,
+    loadLatestState,
     clearPendingQueue: () => setPendingQueue([]),
     previewDocInfo: () => {
       if (typeof state.getPayload !== "function") return null;

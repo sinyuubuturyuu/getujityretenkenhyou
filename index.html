@@ -1745,6 +1745,27 @@
         updateTinyOverflowFix();
       }
 
+      function normalizePreviousFromCloudState(state) {
+        if (!state || typeof state !== "object") return null;
+        const source = state.current || state.previous || null;
+        return normalizePrevious(source);
+      }
+
+      async function refreshPreviousFromCloud() {
+        if (!window.FirebaseCloudSync || typeof window.FirebaseCloudSync.loadLatestState !== "function") return;
+        try {
+          const result = await window.FirebaseCloudSync.loadLatestState({ limit: 60 });
+          if (!result || !result.ok || !result.state) return;
+          const nextPrevious = normalizePreviousFromCloudState(result.state);
+          if (!nextPrevious) return;
+          previous = nextPrevious;
+          savePrevious();
+          if (el.inputDialog.open) renderStep();
+        } catch (error) {
+          console.warn("Failed to load previous data from Firebase:", error);
+        }
+      }
+
       function setFlowScreen(screen) {
         closeDialog();
         currentScreen = screen;
@@ -2032,9 +2053,8 @@
 
       async function exportCsv() {
         const previousSnapshot = normalizeCurrent(JSON.parse(JSON.stringify(current)));
-        // Keep previous data in memory only. Do not back up to smartphone storage.
         previous = previousSnapshot;
-        localStorage.removeItem(STORAGE.previous);
+        savePrevious();
         if (window.FirebaseCloudSync && typeof window.FirebaseCloudSync.saveNowDetailed === "function") {
           window.FirebaseCloudSync.clearPendingQueue && window.FirebaseCloudSync.clearPendingQueue();
           const cloudResult = await window.FirebaseCloudSync.saveNowDetailed("submit", { allowLocalQueue: false });
@@ -2562,9 +2582,12 @@
 
       function init() {
         if (window.FirebaseCloudSync && typeof window.FirebaseCloudSync.init === "function") {
-          void window.FirebaseCloudSync.init({
-            getPayload: () => buildCloudPayload("autosave")
-          });
+          void (async () => {
+            await window.FirebaseCloudSync.init({
+              getPayload: () => buildCloudPayload("autosave")
+            });
+            await refreshPreviousFromCloud();
+          })();
         }
         cleanupLegacyExportDirectoryStorage();
         initTheme();
