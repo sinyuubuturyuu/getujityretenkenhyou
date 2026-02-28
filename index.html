@@ -961,21 +961,56 @@
       const DISPLAY_MAP_10 = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
       const DISPLAY_MAP_6 = ["①", "②", "③", "④", "⑤", "⑥"];
       const ALL_IDS = Array.from({ length: 12 }, (_, i) => i + 1);
+      const TIRE_NUMBERING_VERSION = 3;
+      const LOW12_OLD_TO_NEW_ID_MAP = Object.freeze({
+        1: 1,
+        2: 3,
+        3: 5,
+        4: 6,
+        5: 9,
+        6: 10,
+        7: 2,
+        8: 4,
+        9: 7,
+        10: 8,
+        11: 11,
+        12: 12
+      });
+      const TEN10_OLD_TO_NEW_ID_MAP = Object.freeze({
+        1: 1,
+        2: 3,
+        3: 4,
+        4: 7,
+        5: 8,
+        6: 2,
+        7: 5,
+        8: 6,
+        9: 9,
+        10: 10
+      });
+      const FOURTON6_OLD_TO_NEW_ID_MAP = Object.freeze({
+        1: 1,
+        2: 3,
+        3: 4,
+        4: 2,
+        5: 5,
+        6: 6
+      });
 
       const TRUCK_LAYOUTS = {
         [TRUCK_TYPES.LOW12]: {
-          left: [[1], [2], [3, 4], [5, 6]],
-          right: [[7], [8], [9, 10], [11, 12]],
+          left: [[1], [3], [5, 6], [9, 10]],
+          right: [[2], [4], [7, 8], [11, 12]],
           axes: ["前輪", "2軸", "3軸", "4軸"]
         },
         [TRUCK_TYPES.TEN10]: {
-          left: [[1], [2, 3], [4, 5]],
-          right: [[6], [7, 8], [9, 10]],
+          left: [[1], [3, 4], [7, 8]],
+          right: [[2], [5, 6], [9, 10]],
           axes: ["前輪", "2軸", "3軸"]
         },
         [TRUCK_TYPES.FOURTON6]: {
-          left: [[1], [2, 3]],
-          right: [[4], [5, 6]],
+          left: [[1], [3, 4]],
+          right: [[2], [5, 6]],
           axes: ["前輪", "2軸"]
         }
       };
@@ -1099,7 +1134,24 @@
 
       const newTire = () => ({ maker: "", type: "", groove: "", wear: "", damage: "", pressure: "" });
       const newSpare = () => ({ maker: "", type: "", condition: "" });
+      const migrateLow12TiresToCurrentNumbering = (sourceTires) => {
+        const migrated = Object.fromEntries(ALL_IDS.map((id) => [id, newTire()]));
+        ALL_IDS.forEach((oldId) => {
+          const newId = LOW12_OLD_TO_NEW_ID_MAP[oldId] || oldId;
+          migrated[newId] = { ...newTire(), ...(sourceTires && sourceTires[oldId] ? sourceTires[oldId] : {}) };
+        });
+        return migrated;
+      };
+      const migrateTiresByMap = (sourceTires, idMap) => {
+        const migrated = Object.fromEntries(ALL_IDS.map((id) => [id, newTire()]));
+        ALL_IDS.forEach((oldId) => {
+          const newId = idMap[oldId] || oldId;
+          migrated[newId] = { ...newTire(), ...(sourceTires && sourceTires[oldId] ? sourceTires[oldId] : {}) };
+        });
+        return migrated;
+      };
       const defaultCurrent = () => ({
+        tireNumberingVersion: TIRE_NUMBERING_VERSION,
         truckType: TRUCK_TYPES.LOW12,
         inspectionDate: today(),
         driverName: "",
@@ -1131,6 +1183,18 @@
         ALL_IDS.forEach((id) => {
           curr.tires[id] = { ...newTire(), ...(obj && obj.tires && obj.tires[id] ? obj.tires[id] : {}) };
         });
+        const sourceVersionValue = Number(obj && obj.tireNumberingVersion);
+        const sourceVersion = Number.isFinite(sourceVersionValue) ? sourceVersionValue : 1;
+        if (curr.truckType === TRUCK_TYPES.LOW12 && sourceVersion < 2) {
+          curr.tires = migrateLow12TiresToCurrentNumbering(curr.tires);
+        }
+        if (curr.truckType === TRUCK_TYPES.TEN10 && sourceVersion < 3) {
+          curr.tires = migrateTiresByMap(curr.tires, TEN10_OLD_TO_NEW_ID_MAP);
+        }
+        if (curr.truckType === TRUCK_TYPES.FOURTON6 && sourceVersion < 3) {
+          curr.tires = migrateTiresByMap(curr.tires, FOURTON6_OLD_TO_NEW_ID_MAP);
+        }
+        curr.tireNumberingVersion = TIRE_NUMBERING_VERSION;
         curr.driverName = typeof curr.driverName === "string" ? curr.driverName : "";
         curr.reportNote = typeof curr.reportNote === "string" ? curr.reportNote : "";
         if (!curr.inspectionDate) curr.inspectionDate = today();
