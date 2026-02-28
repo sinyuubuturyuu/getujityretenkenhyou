@@ -1144,11 +1144,32 @@
       const basicSignatureOf = (obj) => {
         const source = obj && typeof obj === "object" ? obj : {};
         return [
-          String(source.inspectionDate ?? "").trim(),
           String(source.driverName ?? "").trim(),
           String(source.vehicleNumber ?? "").trim(),
           String(source.truckType ?? "").trim()
         ].join("|");
+      };
+      const monthKeyFromDateText = (value) => {
+        const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(String(value || "").trim());
+        if (!match) return "";
+        return `${match[1]}-${match[2]}`;
+      };
+      const previousMonthKey = (monthKey) => {
+        const match = /^(\d{4})-(\d{2})$/.exec(String(monthKey || "").trim());
+        if (!match) return "";
+        const year = Number(match[1]);
+        const month = Number(match[2]);
+        if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return "";
+        const d = new Date(Date.UTC(year, month - 1, 1));
+        d.setUTCMonth(d.getUTCMonth() - 1);
+        return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+      };
+      const isWithinPreviousMonthWindow = (candidate, base) => {
+        const baseMonth = monthKeyFromDateText(base && base.inspectionDate);
+        const candidateMonth = monthKeyFromDateText(candidate && candidate.inspectionDate);
+        if (!baseMonth || !candidateMonth) return false;
+        if (candidateMonth === baseMonth) return true;
+        return candidateMonth === previousMonthKey(baseMonth);
       };
       const hasCompleteBasicInfo = (obj) => {
         const source = obj && typeof obj === "object" ? obj : {};
@@ -1774,7 +1795,9 @@
 
       const previousForCurrentBasic = () => {
         if (!previous) return null;
-        return basicSignatureOf(previous) === basicSignatureOf(current) ? previous : null;
+        if (basicSignatureOf(previous) !== basicSignatureOf(current)) return null;
+        if (!isWithinPreviousMonthWindow(previous, current)) return null;
+        return previous;
       };
 
       async function refreshPreviousFromCloud() {
@@ -1791,6 +1814,7 @@
           const nextPrevious = normalizePreviousFromCloudState(cloudState);
           if (!nextPrevious) return false;
           if (basicSignatureOf(nextPrevious) !== expectedSignature) return false;
+          if (!isWithinPreviousMonthWindow(nextPrevious, current)) return false;
           previous = nextPrevious;
           savePrevious();
           return true;

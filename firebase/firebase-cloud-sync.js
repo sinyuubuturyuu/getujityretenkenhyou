@@ -579,12 +579,47 @@
     const preferAnyDevice = Boolean(options && options.preferAnyDevice === true);
     const companyCode = String(state.options && state.options.companyCode ? state.options.companyCode : "").trim();
     const currentDeviceId = state.deviceId || getOrCreateDeviceId();
+    const targetBasic = {
+      driverName: normalizeText(docInfo && docInfo.basicInfo ? docInfo.basicInfo.driverName : ""),
+      vehicleNumber: normalizeText(docInfo && docInfo.basicInfo ? docInfo.basicInfo.vehicleNumber : ""),
+      truckType: normalizeText(docInfo && docInfo.basicInfo ? docInfo.basicInfo.truckType : "")
+    };
 
     const hasState = (row) => Boolean(row && row.state && typeof row.state === "object");
     const sameCompany = (row) => !companyCode || String(row && row.companyCode ? row.companyCode : "").trim() === companyCode;
     const sameDevice = (row) => String(row && row.deviceId ? row.deviceId : "") === String(currentDeviceId || "");
-    const sameSignature = (row) => String(row && row.basicSignature ? row.basicSignature : "").trim() === docInfo.basicSignature;
-    const sameMonth = (row) => String(row && row.inspectionMonth ? row.inspectionMonth : "").trim() === docInfo.month;
+    const basicInfoOf = (row) => {
+      const basicInfo = row && row.basicInfo && typeof row.basicInfo === "object" ? row.basicInfo : {};
+      const current = row && row.state && row.state.current && typeof row.state.current === "object" ? row.state.current : {};
+      return {
+        driverName: normalizeText(basicInfo.driverName || current.driverName),
+        vehicleNumber: normalizeText(basicInfo.vehicleNumber || current.vehicleNumber),
+        truckType: normalizeText(basicInfo.truckType || current.truckType)
+      };
+    };
+    const sameLookupTarget = (row) => {
+      const basic = basicInfoOf(row);
+      return basic.driverName === targetBasic.driverName
+        && basic.vehicleNumber === targetBasic.vehicleNumber
+        && basic.truckType === targetBasic.truckType;
+    };
+    const previousMonthKey = (monthKey) => {
+      const match = /^(\d{4})-(\d{2})$/.exec(String(monthKey || "").trim());
+      if (!match) return "";
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return "";
+      const d = new Date(Date.UTC(year, month - 1, 1));
+      d.setUTCMonth(d.getUTCMonth() - 1);
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    };
+    const lookupMonths = (() => {
+      const currentMonth = String(docInfo && docInfo.month ? docInfo.month : "").trim();
+      if (!currentMonth) return [];
+      const prevMonth = previousMonthKey(currentMonth);
+      if (!prevMonth || prevMonth === currentMonth) return [currentMonth];
+      return [currentMonth, prevMonth];
+    })();
     const clientUpdatedMs = (row) => {
       const ms = Date.parse(toIsoOrEmpty(row && row.clientUpdatedAt));
       return Number.isFinite(ms) ? ms : -1;
@@ -609,7 +644,7 @@
           const exactSnap = await exactRef.get();
           if (exactSnap && exactSnap.exists) {
             const exactData = exactSnap.data() || {};
-            if (hasState(exactData) && sameCompany(exactData)) {
+            if (hasState(exactData) && sameCompany(exactData) && sameLookupTarget(exactData)) {
               return {
                 ok: true,
                 reason: "ok",
@@ -621,10 +656,18 @@
         }
       }
 
-      const snap = await state.db
-        .collection(state.options.collection)
-        .where("basicSignature", "==", docInfo.basicSignature)
-        .limit(60)
+      if (!lookupMonths.length) {
+        return { ok: false, reason: "not_found", state: null };
+      }
+
+      let query = state.db.collection(state.options.collection);
+      if (lookupMonths.length === 1) {
+        query = query.where("inspectionMonth", "==", lookupMonths[0]);
+      } else {
+        query = query.where("inspectionMonth", "in", lookupMonths.slice(0, 10));
+      }
+      const snap = await query
+        .limit(240)
         .get();
       if (!snap || snap.empty) {
         return { ok: false, reason: "not_found", state: null };
@@ -635,21 +678,14 @@
         rows.push(doc.data() || {});
       });
 
-      const monthMatchedRows = rows.filter((row) => hasState(row) && sameCompany(row) && sameSignature(row) && sameMonth(row));
-      const signatureMatchedRows = rows.filter((row) => hasState(row) && sameCompany(row) && sameSignature(row));
+      const matchedRows = rows.filter((row) => hasState(row) && sameCompany(row) && sameLookupTarget(row));
       let selected = null;
 
       if (!preferAnyDevice && currentDeviceId) {
-        selected = selectLatest(monthMatchedRows.filter((row) => sameDevice(row)));
+        selected = selectLatest(matchedRows.filter((row) => sameDevice(row)));
       }
       if (!selected) {
-        selected = selectLatest(monthMatchedRows);
-      }
-      if (!selected && !preferAnyDevice && currentDeviceId) {
-        selected = selectLatest(signatureMatchedRows.filter((row) => sameDevice(row)));
-      }
-      if (!selected) {
-        selected = selectLatest(signatureMatchedRows);
+        selected = selectLatest(matchedRows);
       }
       if (!selected) {
         return { ok: false, reason: "not_found", state: null };
