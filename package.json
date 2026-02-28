@@ -1,0 +1,10 @@
+{
+  "name": "getjityretenkenhyou",
+  "private": true,
+  "scripts": {
+    "gen:icons": "node scripts/generate-icons.mjs"
+  },
+  "devDependencies": {
+    "sharp": "^0.34.3"
+  }
+}
