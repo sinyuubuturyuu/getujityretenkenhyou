@@ -9,6 +9,7 @@ const TARGET_SIZES = [512, 192];
 const SAFE_AREA_RATIO = 0.85;
 const DEFAULT_INPUT = "./assets/tire.png";
 const OUTPUT_DIR = "./public/icons";
+const LEGACY_OUTPUT_DIR = "./icons";
 
 function buildBackgroundSvg(size) {
   return `
@@ -69,10 +70,22 @@ async function writeSizes(baseBuffer, outDir) {
   }
 }
 
+async function syncToLegacyDir(outDir, legacyDir) {
+  const files = ["icon-1024.png", "icon-512.png", "icon-192.png"];
+  await fs.mkdir(legacyDir, { recursive: true });
+  for (const file of files) {
+    const src = path.join(outDir, file);
+    const dest = path.join(legacyDir, file);
+    await fs.copyFile(src, dest);
+    console.log(`Synced ${path.relative(process.cwd(), dest)}`);
+  }
+}
+
 async function main() {
   const argInput = process.argv[2] ?? DEFAULT_INPUT;
   const inputPath = path.resolve(process.cwd(), argInput);
   const outDir = path.resolve(process.cwd(), OUTPUT_DIR);
+  const legacyDir = path.resolve(process.cwd(), LEGACY_OUTPUT_DIR);
 
   try {
     await fs.access(inputPath);
@@ -85,6 +98,7 @@ async function main() {
   await fs.mkdir(outDir, { recursive: true });
   const baseIcon = await createBaseIcon(inputPath);
   await writeSizes(baseIcon, outDir);
+  await syncToLegacyDir(outDir, legacyDir);
 }
 
 main().catch((error) => {

@@ -1,4 +1,4 @@
-const CACHE_NAME = "monthly-tire-check-v21";
+const CACHE_NAME = "monthly-tire-check-v22";
 const ASSETS = [
   "./",
   "./index.html",
@@ -6,8 +6,8 @@ const ASSETS = [
   "./sw.js",
   "./firebase/firebase-config.js?v=20260226-1",
   "./firebase/firebase-cloud-sync.js?v=20260226-1",
-  "./icons/tire-192.png",
-  "./icons/tire-512.png"
+  "./icons/icon-192.png",
+  "./icons/icon-512.png"
 ];
 
 self.addEventListener("install", (event) => {
