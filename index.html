@@ -1206,7 +1206,7 @@
       const HAPTIC_STRENGTH_DEFAULT = 60;
       const HAPTIC_DURATION_MIN_MS = 16;
       const HAPTIC_DURATION_MAX_MS = 72;
-      const HAPTIC_MIN_INTERVAL_MS = 40;
+      const HAPTIC_MIN_INTERVAL_MS = 120;
       const normalizeHapticStrength = (value) => {
         const n = Number(value);
         if (!Number.isFinite(n)) return HAPTIC_STRENGTH_DEFAULT;
@@ -1455,16 +1455,20 @@
         }
         const now = Date.now();
         if (!ignoreEnabled && (now - hapticLastTriggeredAtMs) < HAPTIC_MIN_INTERVAL_MS) return false;
-        hapticLastTriggeredAtMs = now;
         const ms = Math.max(1, Math.round(hapticDurationMs() * Number(multiplier || 1)));
         const pattern = [Math.max(12, Math.round(ms * 0.65)), 24, Math.max(18, ms)];
+        const attempts = [pattern, ms, [ms]];
         try {
-          const result = navigator.vibrate(pattern);
-          hapticLastResult = result === true;
-          if (!hapticLastResult) {
-            hapticLastResult = navigator.vibrate(ms) === true;
+          for (const attempt of attempts) {
+            const result = navigator.vibrate(attempt);
+            if (result === true) {
+              hapticLastTriggeredAtMs = Date.now();
+              hapticLastResult = true;
+              return true;
+            }
           }
-          return hapticLastResult;
+          hapticLastResult = false;
+          return false;
         } catch {
           hapticLastResult = false;
           return false;
