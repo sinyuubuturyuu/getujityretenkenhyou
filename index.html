@@ -1204,8 +1204,9 @@
       const HAPTIC_STRENGTH_MIN = 10;
       const HAPTIC_STRENGTH_MAX = 100;
       const HAPTIC_STRENGTH_DEFAULT = 60;
-      const HAPTIC_DURATION_MIN_MS = 16;
-      const HAPTIC_DURATION_MAX_MS = 72;
+      const HAPTIC_DURATION_MIN_MS = 28;
+      const HAPTIC_DURATION_MAX_MS = 140;
+      const HAPTIC_TEST_PATTERN = [180, 90, 240];
       const HAPTIC_MIN_INTERVAL_MS = 120;
       const normalizeHapticStrength = (value) => {
         const n = Number(value);
@@ -1448,15 +1449,19 @@
       };
       const triggerHaptic = (multiplier = 1, options = {}) => {
         const ignoreEnabled = Boolean(options && options.ignoreEnabled);
+        const bypassThrottle = Boolean(options && options.bypassThrottle);
+        const forcedPattern = options && options.pattern ? options.pattern : null;
         if (!ignoreEnabled && !hapticEnabled) return false;
         if (!supportsHapticVibration()) {
           hapticLastResult = false;
           return false;
         }
         const now = Date.now();
-        if (!ignoreEnabled && (now - hapticLastTriggeredAtMs) < HAPTIC_MIN_INTERVAL_MS) return false;
+        if (!ignoreEnabled && !bypassThrottle && (now - hapticLastTriggeredAtMs) < HAPTIC_MIN_INTERVAL_MS) return false;
         const ms = Math.max(1, Math.round(hapticDurationMs() * Number(multiplier || 1)));
-        const pattern = [Math.max(12, Math.round(ms * 0.65)), 24, Math.max(18, ms)];
+        const pattern = Array.isArray(forcedPattern)
+          ? forcedPattern
+          : [Math.max(18, Math.round(ms * 0.7)), 32, Math.max(28, Math.round(ms * 1.1))];
         const attempts = [pattern, ms, [ms]];
         try {
           for (const attempt of attempts) {
@@ -2030,7 +2035,7 @@
           if (!supportsHapticVibration()) {
             el.hapticSupportNote.textContent = "このブラウザではバイブAPIが利用できません。";
           } else if (hapticLastResult === false) {
-            el.hapticSupportNote.textContent = "APIは利用可能ですが振動が拒否されています。端末のバイブ設定/省電力/サイレントを確認してください。";
+            el.hapticSupportNote.textContent = "APIは利用可能ですが振動が拒否されています。端末のタッチ時バイブ/省電力/サイレントを確認してください。";
           } else {
             el.hapticSupportNote.textContent = "対応端末です。テストを押して振動を確認してください。";
           }
@@ -2905,13 +2910,17 @@
             showToast("クリック時バイブがオフです");
             return;
           }
-          const ok = triggerHaptic(1.8, { ignoreEnabled: true });
+          const ok = triggerHaptic(1, {
+            ignoreEnabled: true,
+            bypassThrottle: true,
+            pattern: HAPTIC_TEST_PATTERN
+          });
           if (!ok) {
             renderSettings();
             showToast("振動できません。端末設定を確認してください");
             return;
           }
-          showToast(`テスト振動: ${hapticDurationMs()}ms`);
+          showToast(`テスト振動: ${HAPTIC_TEST_PATTERN.join("-")}ms`);
         });
         el.addVehicleBtn.addEventListener("click", addVehicleNumber);
         el.newVehicleNumber.addEventListener("keydown", (ev) => {
