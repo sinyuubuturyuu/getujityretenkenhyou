@@ -1216,8 +1216,6 @@
       const supportsHapticVibration = () => (
         typeof navigator !== "undefined"
         && typeof navigator.vibrate === "function"
-        && typeof window !== "undefined"
-        && window.isSecureContext === true
       );
 
       const normalizeCurrent = (obj) => {
@@ -1459,9 +1457,13 @@
         if (!ignoreEnabled && (now - hapticLastTriggeredAtMs) < HAPTIC_MIN_INTERVAL_MS) return false;
         hapticLastTriggeredAtMs = now;
         const ms = Math.max(1, Math.round(hapticDurationMs() * Number(multiplier || 1)));
+        const pattern = [Math.max(12, Math.round(ms * 0.65)), 24, Math.max(18, ms)];
         try {
-          const result = navigator.vibrate(ms);
+          const result = navigator.vibrate(pattern);
           hapticLastResult = result === true;
+          if (!hapticLastResult) {
+            hapticLastResult = navigator.vibrate(ms) === true;
+          }
           return hapticLastResult;
         } catch {
           hapticLastResult = false;
@@ -2022,7 +2024,7 @@
         if (el.hapticStrengthValue) el.hapticStrengthValue.textContent = `${hapticStrength}%`;
         if (el.hapticSupportNote) {
           if (!supportsHapticVibration()) {
-            el.hapticSupportNote.textContent = "このページがHTTPSでない、またはブラウザがバイブAPI非対応です。";
+            el.hapticSupportNote.textContent = "このブラウザではバイブAPIが利用できません。";
           } else if (hapticLastResult === false) {
             el.hapticSupportNote.textContent = "APIは利用可能ですが振動が拒否されています。端末のバイブ設定/省電力/サイレントを確認してください。";
           } else {
@@ -2829,6 +2831,12 @@
         if ("disabled" in interactive && interactive.disabled) return false;
         return true;
       }
+      function onInteractiveHaptic(target, options = {}) {
+        if (!shouldTriggerHapticFromInteractiveTarget(target)) return;
+        if (!hapticEnabled) return;
+        const ok = triggerHaptic(options.multiplier || 1);
+        if (!ok && options.renderOnFail !== false) renderSettings();
+      }
 
       function bindEvents() {
         el.inspectionDate.addEventListener("change", (ev) => {
@@ -2893,7 +2901,7 @@
             showToast("クリック時バイブがオフです");
             return;
           }
-          const ok = triggerHaptic(1.4);
+          const ok = triggerHaptic(1.8, { ignoreEnabled: true });
           if (!ok) {
             renderSettings();
             showToast("振動できません。端末設定を確認してください");
@@ -2995,18 +3003,18 @@
         });
         el.stepSelect.addEventListener("change", (ev) => applyStep(ev.target.value));
         document.addEventListener("pointerdown", (ev) => {
-          if (!shouldTriggerHapticFromInteractiveTarget(ev.target)) return;
-          if (!hapticEnabled) return;
           if (ev.pointerType === "mouse" && ev.button !== 0) return;
-          const ok = triggerHaptic();
-          if (!ok) renderSettings();
+          onInteractiveHaptic(ev.target);
+        }, { capture: true, passive: true });
+        document.addEventListener("touchstart", (ev) => {
+          onInteractiveHaptic(ev.target, { multiplier: 1.05 });
+        }, { capture: true, passive: true });
+        document.addEventListener("click", (ev) => {
+          onInteractiveHaptic(ev.target, { multiplier: 0.95, renderOnFail: false });
         }, { capture: true, passive: true });
         document.addEventListener("keydown", (ev) => {
           if (ev.key !== "Enter" && ev.key !== " ") return;
-          if (!shouldTriggerHapticFromInteractiveTarget(ev.target)) return;
-          if (!hapticEnabled) return;
-          const ok = triggerHaptic(0.95);
-          if (!ok) renderSettings();
+          onInteractiveHaptic(ev.target, { multiplier: 0.95 });
         }, { capture: true });
       }
 
