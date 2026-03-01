@@ -820,19 +820,6 @@
             </select>
           </div>
           <div class="field">
-            <label for="hapticEnabled">クリック時バイブ</label>
-            <div class="row">
-              <select id="hapticEnabled" class="sel">
-                <option value="on">オン</option>
-                <option value="off">オフ</option>
-              </select>
-              <input id="hapticStrength" type="range" min="10" max="100" step="5" value="60">
-              <span id="hapticStrengthValue" class="setting-inline-value">60%</span>
-              <button id="hapticTestBtn" class="mini-btn show-btn" type="button">テスト</button>
-            </div>
-            <div id="hapticSupportNote" class="backup-status"></div>
-          </div>
-          <div class="field">
             <label for="newVehicleNumber">車両番号を登録</label>
             <div class="row">
               <input id="newVehicleNumber" type="text" placeholder="例: 品川 100 あ 1234" autocomplete="off">
@@ -953,9 +940,7 @@
         vehicles: "tire.monthly.vehicles.v1",
         drivers: "tire.monthly.drivers.v1",
         truckTypes: "tire.monthly.trucktypes.v1",
-        theme: "tire.monthly.theme.v1",
-        hapticEnabled: "tire.monthly.haptic.enabled.v1",
-        hapticStrength: "tire.monthly.haptic.strength.v1"
+        theme: "tire.monthly.theme.v1"
       };
       const SETTINGS_BACKUP_KIND = Object.freeze({
         VEHICLES: "vehicles",
@@ -1096,11 +1081,6 @@
         sendFarewell: document.getElementById("sendFarewell"),
         sendFarewellImage: document.getElementById("sendFarewellImage"),
         themeMode: document.getElementById("themeMode"),
-        hapticEnabled: document.getElementById("hapticEnabled"),
-        hapticStrength: document.getElementById("hapticStrength"),
-        hapticStrengthValue: document.getElementById("hapticStrengthValue"),
-        hapticTestBtn: document.getElementById("hapticTestBtn"),
-        hapticSupportNote: document.getElementById("hapticSupportNote"),
         settingsUpdatedAt: document.getElementById("settingsUpdatedAt"),
         newVehicleNumber: document.getElementById("newVehicleNumber"),
         addVehicleBtn: document.getElementById("addVehicleBtn"),
@@ -1201,25 +1181,6 @@
           return fallback;
         }
       };
-      const HAPTIC_STRENGTH_MIN = 10;
-      const HAPTIC_STRENGTH_MAX = 100;
-      const HAPTIC_STRENGTH_DEFAULT = 60;
-      const HAPTIC_DURATION_MIN_MS = 55;
-      const HAPTIC_DURATION_MAX_MS = 280;
-      const HAPTIC_TEST_PATTERN = [420, 160, 640];
-      const HAPTIC_TEST_FALLBACK_PULSE_MS = 720;
-      const HAPTIC_MIN_INTERVAL_MS = 120;
-      const normalizeHapticStrength = (value) => {
-        const n = Number(value);
-        if (!Number.isFinite(n)) return HAPTIC_STRENGTH_DEFAULT;
-        const rounded = Math.round(n / 5) * 5;
-        return Math.max(HAPTIC_STRENGTH_MIN, Math.min(HAPTIC_STRENGTH_MAX, rounded));
-      };
-      const supportsHapticVibration = () => (
-        typeof navigator !== "undefined"
-        && typeof navigator.vibrate === "function"
-      );
-
       const normalizeCurrent = (obj) => {
         const base = defaultCurrent();
         const curr = {
@@ -1378,10 +1339,6 @@
         return drivers.findIndex((entry) => normalizeDriverName(entry) === target);
       };
       const hasDriverName = (name) => findDriverIndexByName(name) >= 0;
-      let hapticEnabled = read(STORAGE.hapticEnabled, true) !== false;
-      let hapticStrength = normalizeHapticStrength(read(STORAGE.hapticStrength, HAPTIC_STRENGTH_DEFAULT));
-      let hapticLastResult = null;
-      let hapticLastTriggeredAtMs = 0;
       let settingsBackupMeta = emptyBackupMeta();
       let settingsBackupLoading = false;
       let settingsBackupWorking = false;
@@ -1436,62 +1393,6 @@
       const saveTruckTypes = () => {
         localStorage.setItem(STORAGE.truckTypes, JSON.stringify(truckTypes));
         scheduleCloudSync("master");
-      };
-      const saveHapticSettings = () => {
-        localStorage.setItem(STORAGE.hapticEnabled, JSON.stringify(hapticEnabled));
-        localStorage.setItem(STORAGE.hapticStrength, JSON.stringify(hapticStrength));
-      };
-      const hapticDurationMs = () => {
-        const ratio = hapticStrength / HAPTIC_STRENGTH_MAX;
-        return Math.max(
-          HAPTIC_DURATION_MIN_MS,
-          Math.min(HAPTIC_DURATION_MAX_MS, Math.round(HAPTIC_DURATION_MIN_MS + (ratio * (HAPTIC_DURATION_MAX_MS - HAPTIC_DURATION_MIN_MS))))
-        );
-      };
-      const triggerHaptic = (multiplier = 1, options = {}) => {
-        const ignoreEnabled = Boolean(options && options.ignoreEnabled);
-        const bypassThrottle = Boolean(options && options.bypassThrottle);
-        const forcedPattern = options && options.pattern ? options.pattern : null;
-        if (!ignoreEnabled && !hapticEnabled) return false;
-        if (!supportsHapticVibration()) {
-          hapticLastResult = false;
-          return false;
-        }
-        const now = Date.now();
-        if (!ignoreEnabled && !bypassThrottle && (now - hapticLastTriggeredAtMs) < HAPTIC_MIN_INTERVAL_MS) return false;
-        const ms = Math.max(1, Math.round(hapticDurationMs() * Number(multiplier || 1)));
-        const pattern = Array.isArray(forcedPattern)
-          ? forcedPattern
-          : [Math.max(55, Math.round(ms * 0.85)), 60, Math.max(90, Math.round(ms * 1.35))];
-        const attempts = Array.isArray(forcedPattern)
-          ? [HAPTIC_TEST_FALLBACK_PULSE_MS, pattern, [520], 520]
-          : [Math.max(110, ms), [Math.max(110, ms)], pattern];
-        try {
-          for (const attempt of attempts) {
-            const result = navigator.vibrate(attempt);
-            if (result === true) {
-              hapticLastTriggeredAtMs = Date.now();
-              hapticLastResult = true;
-              return true;
-            }
-          }
-          hapticLastResult = false;
-          return false;
-        } catch {
-          hapticLastResult = false;
-          return false;
-        }
-      };
-      const setHapticEnabled = (enabled) => {
-        hapticEnabled = enabled !== false;
-        saveHapticSettings();
-        hapticLastResult = null;
-        renderSettings();
-      };
-      const setHapticStrength = (value) => {
-        hapticStrength = normalizeHapticStrength(value);
-        saveHapticSettings();
-        if (el.hapticStrengthValue) el.hapticStrengthValue.textContent = `${hapticStrength}%`;
       };
 
       function cleanupLegacyExportDirectoryStorage() {
@@ -2028,21 +1929,6 @@
       function renderSettings() {
         const mode = document.body.getAttribute("data-theme") === "dark" ? "dark" : "light";
         el.themeMode.value = mode;
-        if (el.hapticEnabled) el.hapticEnabled.value = hapticEnabled ? "on" : "off";
-        if (el.hapticStrength) {
-          el.hapticStrength.value = String(hapticStrength);
-          el.hapticStrength.disabled = !hapticEnabled;
-        }
-        if (el.hapticStrengthValue) el.hapticStrengthValue.textContent = `${hapticStrength}%`;
-        if (el.hapticSupportNote) {
-          if (!supportsHapticVibration()) {
-            el.hapticSupportNote.textContent = "このブラウザではバイブAPIが利用できません。";
-          } else if (hapticLastResult === false) {
-            el.hapticSupportNote.textContent = "API応答はありますが実振動できていません。Pixel/Androidは「設定 > 音とバイブレーション > タッチ操作のバイブ」「Chromeサイト設定のバイブ」をONにしてください。";
-          } else {
-            el.hapticSupportNote.textContent = "対応端末です。テストを押して振動を確認してください。";
-          }
-        }
         if (el.settingsUpdatedAt) el.settingsUpdatedAt.textContent = `更新: ${latestCommitPushedAt}`;
         renderVehicleList();
         renderDriverList();
@@ -2836,20 +2722,6 @@
         appendSide(el.rightTires, layout.right);
       }
 
-      function shouldTriggerHapticFromInteractiveTarget(target) {
-        if (!(target instanceof Element)) return false;
-        const interactive = target.closest("button, select, input[type='range'], input[type='checkbox'], input[type='radio'], input[type='button'], input[type='submit']");
-        if (!(interactive instanceof HTMLElement)) return false;
-        if ("disabled" in interactive && interactive.disabled) return false;
-        return true;
-      }
-      function onInteractiveHaptic(target, options = {}) {
-        if (!shouldTriggerHapticFromInteractiveTarget(target)) return;
-        if (!hapticEnabled) return;
-        const ok = triggerHaptic(options.multiplier || 1);
-        if (!ok && options.renderOnFail !== false) renderSettings();
-      }
-
       function bindEvents() {
         el.inspectionDate.addEventListener("change", (ev) => {
           if (!ev.target.value) return;
@@ -2892,39 +2764,6 @@
         el.openSettingsBtn.addEventListener("click", openSettingsDialog);
         el.closeSettingsBtn.addEventListener("click", closeSettingsDialog);
         el.themeMode.addEventListener("change", (ev) => setTheme(ev.target.value));
-        el.hapticEnabled.addEventListener("change", (ev) => {
-          const next = ev.target.value === "on";
-          setHapticEnabled(next);
-          if (next) {
-            const ok = triggerHaptic(1.1, { ignoreEnabled: true });
-            if (!ok) renderSettings();
-          }
-        });
-        el.hapticStrength.addEventListener("input", (ev) => {
-          setHapticStrength(ev.target.value);
-        });
-        el.hapticStrength.addEventListener("change", () => {
-          if (!hapticEnabled) return;
-          const ok = triggerHaptic(1.1);
-          if (!ok) renderSettings();
-        });
-        el.hapticTestBtn.addEventListener("click", () => {
-          if (!hapticEnabled) {
-            showToast("クリック時バイブがオフです");
-            return;
-          }
-          const ok = triggerHaptic(1, {
-            ignoreEnabled: true,
-            bypassThrottle: true,
-            pattern: HAPTIC_TEST_PATTERN
-          });
-          if (!ok) {
-            renderSettings();
-            showToast("振動できません。端末設定を確認してください");
-            return;
-          }
-          showToast(`テスト振動: ${HAPTIC_TEST_FALLBACK_PULSE_MS}ms / ${HAPTIC_TEST_PATTERN.join("-")}ms`);
-        });
         el.addVehicleBtn.addEventListener("click", addVehicleNumber);
         el.newVehicleNumber.addEventListener("keydown", (ev) => {
           if (ev.key !== "Enter") return;
@@ -3018,20 +2857,6 @@
           }
         });
         el.stepSelect.addEventListener("change", (ev) => applyStep(ev.target.value));
-        document.addEventListener("pointerdown", (ev) => {
-          if (ev.pointerType === "mouse" && ev.button !== 0) return;
-          onInteractiveHaptic(ev.target);
-        }, { capture: true, passive: true });
-        document.addEventListener("touchstart", (ev) => {
-          onInteractiveHaptic(ev.target, { multiplier: 1.05 });
-        }, { capture: true, passive: true });
-        document.addEventListener("click", (ev) => {
-          onInteractiveHaptic(ev.target, { multiplier: 0.95, renderOnFail: false });
-        }, { capture: true, passive: true });
-        document.addEventListener("keydown", (ev) => {
-          if (ev.key !== "Enter" && ev.key !== " ") return;
-          onInteractiveHaptic(ev.target, { multiplier: 0.95 });
-        }, { capture: true });
       }
 
       async function registerSW() {
