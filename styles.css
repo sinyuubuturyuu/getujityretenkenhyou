@@ -1,0 +1,716 @@
+    :root {
+      --bg: #f4f8fd;
+      --bg2: #d9e8f8;
+      --surface: #ffffff;
+      --surface2: #eef4fb;
+      --text: #0f1b2a;
+      --text-strong: #08121d;
+      --muted: #4c637d;
+      --line: #b4c8df;
+      --accent: #2f78bf;
+      --ok: #2f9d69;
+      --warn: #b7792e;
+      --pending: #6f879f;
+      --danger: #b24b4b;
+      --dock-bg: #dbe7f5;
+      --dock-surface: #edf4fc;
+      --dock-line: #b8cade;
+      --tap: 56px;
+      --radius: 12px;
+      --shadow: 0 10px 24px rgba(20, 44, 72, 0.18);
+      --mobile-fit-scale: 1;
+      --bottom-dock-space: 110px;
+    }
+    html[data-theme="dark"],
+    body[data-theme="dark"] {
+      --bg: #000000;
+      --bg2: #0b121b;
+      --surface: #111a25;
+      --surface2: #172234;
+      --text: #d5e1f2;
+      --text-strong: #e2ecfb;
+      --muted: #8ea4bf;
+      --line: #2b3f57;
+      --accent: #5b9bd1;
+      --ok: #4ebd8a;
+      --warn: #d39a49;
+      --pending: #5f7288;
+      --danger: #d06f6f;
+      --dock-bg: #000000;
+      --dock-surface: #141f2f;
+      --dock-line: #2c4058;
+      --shadow: 0 14px 30px rgba(0, 0, 0, 0.5);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      font-family: "BIZ UDPGothic", "Yu Gothic UI", "Meiryo", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 700px at 120% -10%, var(--bg2), transparent 55%),
+        radial-gradient(800px 500px at -20% 20%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 55%),
+        var(--bg);
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      padding-bottom: var(--bottom-dock-space);
+    }
+    body.tiny-overflow-lock {
+      overflow-y: hidden;
+      overscroll-behavior-y: none;
+    }
+    .wrap { width: min(1100px, 94vw); margin: 14px auto 36px; }
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: color-mix(in srgb, var(--surface) 88%, transparent);
+      backdrop-filter: blur(8px);
+      box-shadow: var(--shadow);
+    }
+    h1 { margin: 0; font-size: clamp(calc(2.25rem * var(--mobile-fit-scale)), calc(4.5vw * var(--mobile-fit-scale)), calc(2.7rem * var(--mobile-fit-scale))); }
+    .sub { margin: 2px 0 0; color: var(--muted); font-size: .84rem; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn {
+      min-height: var(--tap);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 14px;
+      background: var(--surface2);
+      color: var(--text);
+      font-size: .95rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn.primary { background: var(--accent); color: var(--text-strong); border-color: color-mix(in srgb, var(--accent) 70%, black); }
+    .btn.warn { background: color-mix(in srgb, var(--warn) 22%, var(--surface)); }
+    .btn.danger { background: color-mix(in srgb, var(--danger) 20%, var(--surface)); }
+    .panel {
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .panel-head {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 16%, var(--surface)), var(--surface));
+      font-weight: 700;
+    }
+    .settings-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .settings-updated-at {
+      color: var(--muted);
+      font-size: .8rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .panel-body { padding: 12px; }
+    #truckScreen .panel {
+      margin-top: 12px;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      overflow: visible;
+    }
+    #truckScreen .panel-body {
+      padding: 0;
+    }
+    #exportScreen .panel {
+      background: var(--surface2);
+    }
+    .export-body {
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      background: var(--surface2);
+    }
+    .export-note-field {
+      padding: 10px 10px 8px;
+    }
+    .field.export-note-field textarea {
+      min-height: calc(393.3px * 0.9);
+    }
+    .export-actions {
+      margin-top: 12px;
+      padding: 0 10px 10px;
+      display: grid;
+      gap: 8px;
+    }
+    .meta {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      align-items: end;
+    }
+    .basic-meta {
+      grid-template-areas:
+        "date vehicle mode"
+        "driver vehicle mode";
+    }
+    .basic-meta .field-date { grid-area: date; }
+    .basic-meta .field-driver { grid-area: driver; }
+    .basic-meta .field-vehicle { grid-area: vehicle; }
+    .basic-meta .field-mode { grid-area: mode; }
+    .field { display: grid; gap: 6px; }
+    .field label { font-size: .84rem; color: var(--muted); font-weight: 700; }
+    #basicScreen .basic-meta .field label { font-size: calc(1.68rem * var(--mobile-fit-scale)); }
+    .export-note-field > label { font-size: 1rem; color: var(--text); font-weight: 700; }
+    .field input,
+    .field select,
+    .field textarea {
+      min-height: var(--tap);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 1rem;
+      color: var(--text);
+      background: var(--surface2);
+      width: 100%;
+    }
+    .basic-value {
+      min-height: 1.3em;
+      border: none;
+      border-radius: 0;
+      padding: 0;
+      font-size: 1rem;
+      color: var(--text);
+      background: transparent;
+      display: flex;
+      align-items: center;
+      font-weight: 700;
+      word-break: break-all;
+    }
+    .basic-value.placeholder {
+      color: var(--muted);
+      font-weight: 600;
+    }
+    #basicScreen .basic-meta #inspectionDate,
+    #basicScreen .basic-meta .basic-value {
+      font-size: calc(2rem * var(--mobile-fit-scale));
+    }
+    #basicScreen .basic-meta .basic-value {
+      min-height: var(--tap);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: var(--surface2);
+    }
+    #basicNextBtn,
+    #quickResetBtn,
+    #openSettingsBtn {
+      font-size: calc(1.9rem * var(--mobile-fit-scale));
+    }
+    #truckToExportBtn,
+    #truckBackBtn {
+      font-size: calc(2.04rem * var(--mobile-fit-scale));
+    }
+    #exportCsvBtn,
+    #exportBackBtn {
+      font-size: calc(2.1rem * var(--mobile-fit-scale));
+    }
+    #exportScreen .export-note-field > label {
+      font-size: calc(2rem * var(--mobile-fit-scale));
+    }
+    #reportNote {
+      font-size: calc(2rem * var(--mobile-fit-scale));
+    }
+    #reportNote::placeholder {
+      font-size: calc(2rem * var(--mobile-fit-scale));
+    }
+    .field textarea {
+      min-height: 120px;
+      resize: vertical;
+      font-family: inherit;
+    }
+    .mode-switch {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .mode-btn {
+      min-height: 54px;
+      padding: 8px 10px;
+      font-size: .9rem;
+    }
+    .mode-btn.active {
+      background: var(--accent);
+      color: var(--text-strong);
+      border-color: color-mix(in srgb, var(--accent) 70%, black);
+    }
+    .setting-inline-value {
+      min-width: 52px;
+      align-self: center;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+      font-size: .9rem;
+      font-weight: 700;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr minmax(170px, 2fr) 1fr;
+      grid-template-rows: 1fr auto;
+      gap: 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface2);
+      padding: 12px;
+    }
+    .col {
+      display: grid;
+      gap: 10px;
+      align-content: stretch;
+    }
+    .tire-slot {
+      display: flex;
+      align-items: stretch;
+      height: 100%;
+    }
+    .tire-slot.single {
+      justify-content: center;
+    }
+    .tire-slot.single .tire {
+      width: calc(50% - 4px);
+    }
+    .tire-slot.dual {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .truck {
+      border: 2px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+      border-radius: 14px;
+      background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 18%, var(--surface)), var(--surface));
+      display: grid;
+      padding: 8px;
+    }
+    .ax {
+      border-bottom: 1px dashed color-mix(in srgb, var(--line) 70%, transparent);
+      color: var(--muted);
+      font-size: .82rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .ax:last-child { border-bottom: none; }
+    .tire {
+      min-height: 62px;
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      background: color-mix(in srgb, var(--pending) 40%, var(--surface2));
+      color: color-mix(in srgb, var(--text) 86%, black);
+      font-size: 1.02rem;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .tire.partial { background: color-mix(in srgb, var(--warn) 34%, var(--surface2)); border-color: color-mix(in srgb, var(--warn) 70%, var(--line)); }
+    .tire.done { background: color-mix(in srgb, var(--ok) 35%, var(--surface2)); border-color: color-mix(in srgb, var(--ok) 70%, var(--line)); }
+    .spare {
+      grid-column: 2;
+      width: 100%;
+      align-self: start;
+      display: flex;
+      justify-content: center;
+    }
+    .spare .tire {
+      width: calc(50% - 4px);
+    }
+    .muted { color: var(--muted); font-size: .84rem; }
+    .summary {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface2);
+      padding: 10px;
+      min-height: 105px;
+    }
+    .card.pending { border-style: dashed; }
+    .card h3 { margin: 0; font-size: .98rem; }
+    .card p { margin: 8px 0 0; font-size: .87rem; line-height: 1.45; }
+    .screen { display: none; }
+    .screen.active { display: block; }
+    .screen-actions {
+      margin-top: 12px;
+      justify-content: center;
+    }
+    .screen-actions .btn {
+      flex: 1 1 220px;
+    }
+    .truck-actions {
+      margin-top: 12px;
+      display: grid;
+      gap: 8px;
+    }
+    .truck-actions .btn {
+      width: 100%;
+      min-height: 68px;
+      font-size: 1.02rem;
+    }
+    .send-btn {
+      flex: 1 1 100%;
+      width: 100%;
+      min-height: 68px;
+      font-size: 1.05rem;
+    }
+    .fixed-settings {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 40;
+      display: flex;
+      justify-content: center;
+      padding: 10px 0 calc(12px + env(safe-area-inset-bottom));
+      background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--dock-bg) 88%, black) 36%);
+      pointer-events: none;
+    }
+    .fixed-settings-row {
+      width: min(520px, 92vw);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: color-mix(in srgb, var(--dock-surface) 90%, black);
+      border-color: var(--dock-line);
+      box-shadow: var(--shadow);
+      pointer-events: auto;
+    }
+    .fixed-settings .btn {
+      width: 100%;
+      pointer-events: auto;
+      box-shadow: none;
+    }
+    body.screen-settings .fixed-settings {
+      display: none;
+    }
+    .settings-body {
+      display: grid;
+      gap: 12px;
+    }
+    .empty { color: var(--muted); font-size: .92rem; }
+    body.screen-truck .wrap {
+      width: min(1320px, 98vw);
+    }
+    body.screen-truck #truckScreen .panel-body {
+      min-height: calc(100vh - 242px);
+      display: flex;
+      flex-direction: column;
+    }
+    @supports (height: 100dvh) {
+      body.screen-truck #truckScreen .panel-body {
+        min-height: calc(100dvh - 242px);
+      }
+    }
+    body.screen-truck #truckScreen .layout {
+      flex: 1;
+    }
+    .vehicle-list {
+      display: grid;
+      gap: 8px;
+      max-height: 220px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+    .vehicle-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface2);
+      padding: 8px 10px;
+    }
+    .vehicle-item span {
+      font-size: .92rem;
+      font-weight: 700;
+      word-break: break-all;
+    }
+    .vehicle-item-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .mini-btn {
+      min-height: 42px;
+      padding: 8px 12px;
+      font-size: .85rem;
+      font-weight: 700;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--danger) 18%, var(--surface));
+      color: var(--text);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .mini-btn.show-btn {
+      background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+      border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+    }
+    .mini-btn.show-btn.active {
+      background: var(--accent);
+      color: var(--text-strong);
+      border-color: color-mix(in srgb, var(--accent) 70%, black);
+    }
+    .mini-btn.restore-btn {
+      background: color-mix(in srgb, var(--ok) 20%, var(--surface));
+      border-color: color-mix(in srgb, var(--ok) 45%, var(--line));
+    }
+    .mini-btn:disabled {
+      opacity: 0.58;
+      cursor: not-allowed;
+    }
+    .backup-status {
+      margin-top: 4px;
+      font-size: .82rem;
+      font-weight: 700;
+      color: var(--muted);
+    }
+    dialog {
+      border: none;
+      width: min(92vw, 420px);
+      padding: 0;
+      background: transparent;
+    }
+    dialog::backdrop { background: rgba(7, 13, 22, .52); }
+    .modal {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .modal-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 16%, var(--surface)), var(--surface));
+    }
+    .modal-body { padding: 12px; display: grid; gap: 10px; }
+    .step { color: var(--muted); font-size: .88rem; font-weight: 700; }
+    .modal h3 { margin: 0; font-size: 1rem; }
+    .confirm-text {
+      margin: 0;
+      font-size: 1.2rem;
+      font-weight: 800;
+      text-align: center;
+      color: var(--text);
+      padding: 8px 4px;
+    }
+    #sendConfirmDialog .modal-foot {
+      justify-content: center;
+      gap: 10px;
+    }
+    #sendConfirmDialog .modal-foot .btn {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+    #inputDialog .modal-head {
+      background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 86%, black), color-mix(in srgb, var(--accent) 62%, black));
+    }
+    #inputDialog .modal-body {
+      background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 70%, #0b1c2f), color-mix(in srgb, var(--accent) 55%, #0b1c2f));
+    }
+    #inputDialog #dialogTarget {
+      color: var(--text-strong);
+      font-size: 1.2rem;
+      font-weight: 800;
+    }
+    #inputDialog #stepTitle {
+      color: var(--text-strong);
+      font-size: 1.2rem;
+      font-weight: 800;
+    }
+    #inputDialog .preview {
+      color: var(--text-strong);
+      font-size: 1rem;
+      border-color: color-mix(in srgb, var(--line) 55%, transparent);
+      background: color-mix(in srgb, var(--surface2) 18%, #0f2237);
+    }
+    .sel {
+      min-height: var(--tap);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface2);
+      color: var(--text);
+      font-size: 1rem;
+      font-weight: 700;
+      padding: 8px 10px;
+    }
+    .preview {
+      margin: 0;
+      min-height: 42px;
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--surface2) 70%, transparent);
+      padding: 8px 10px;
+      color: var(--muted);
+      font-size: .88rem;
+      line-height: 1.4;
+      white-space: pre-line;
+    }
+    .preview-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      align-items: start;
+    }
+    .preview-col {
+      display: grid;
+      gap: 4px;
+    }
+    .preview-label {
+      margin: 0;
+      min-height: 1.1em;
+      font-size: .76rem;
+      color: var(--muted);
+      font-weight: 700;
+      padding-left: 2px;
+    }
+    .preview-prev {
+      color: color-mix(in srgb, var(--text) 62%, var(--muted));
+      background: color-mix(in srgb, var(--surface2) 45%, transparent);
+      border-color: color-mix(in srgb, var(--line) 70%, transparent);
+    }
+    .modal-foot {
+      padding: 12px;
+      border-top: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    #inputDialog .modal-foot {
+      justify-content: flex-start;
+    }
+    #inputDialog #closeStepBtn {
+      margin-left: auto;
+    }
+    #inputDialog .modal {
+      position: relative;
+    }
+    .input-warning {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%) scale(.96);
+      opacity: 0;
+      pointer-events: none;
+      width: min(88vw, 760px);
+      background: color-mix(in srgb, var(--danger) 88%, black);
+      color: var(--text-strong);
+      border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
+      border-radius: 20px;
+      padding: 14px 18px;
+      font-size: calc(2.25rem * 0.81);
+      line-height: 1.15;
+      font-weight: 800;
+      text-align: center;
+      white-space: pre-line;
+      overflow-wrap: anywhere;
+      z-index: 40;
+      transition: opacity .15s ease, transform .15s ease;
+    }
+    .input-warning.show {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(86px + env(safe-area-inset-bottom));
+      transform: translateX(-50%) translateY(16px);
+      opacity: 0;
+      pointer-events: none;
+      width: min(96vw, 1200px);
+      background: color-mix(in srgb, var(--danger) 88%, black);
+      color: var(--text-strong);
+      border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
+      border-radius: 24px;
+      padding: 18px 24px;
+      font-size: calc(2.25rem * 0.81);
+      line-height: 1.15;
+      text-align: center;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      z-index: 30;
+      transition: opacity .15s ease, transform .15s ease;
+    }
+    .toast.warn {
+      width: min(92vw, 760px);
+      border-radius: 20px;
+      padding: 14px 18px;
+      font-size: calc(2.25rem * 0.81);
+      white-space: pre-line;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .send-farewell {
+      position: fixed;
+      inset: 0;
+      z-index: 70;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding:
+        max(8px, env(safe-area-inset-top))
+        max(8px, env(safe-area-inset-right))
+        max(8px, env(safe-area-inset-bottom))
+        max(8px, env(safe-area-inset-left));
+      background: #050b16;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity .18s ease;
+    }
+    .send-farewell.show {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+    .send-farewell img {
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+    }
+    @media (max-width: 860px) {
+      .header { position: static; }
+      .meta { grid-template-columns: 1fr; }
+      .basic-meta { grid-template-areas: none; }
+      .basic-meta .field-date,
+      .basic-meta .field-driver,
+      .basic-meta .field-vehicle,
+      .basic-meta .field-mode { grid-area: auto; }
+      .layout { grid-template-columns: 1fr minmax(130px, 1.2fr) 1fr; grid-template-rows: 1fr auto; gap: 8px; }
+      .tire { min-height: 58px; }
+      .screen-actions .btn { flex-basis: 100%; }
+    }
