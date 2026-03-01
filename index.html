@@ -1204,9 +1204,10 @@
       const HAPTIC_STRENGTH_MIN = 10;
       const HAPTIC_STRENGTH_MAX = 100;
       const HAPTIC_STRENGTH_DEFAULT = 60;
-      const HAPTIC_DURATION_MIN_MS = 28;
-      const HAPTIC_DURATION_MAX_MS = 140;
-      const HAPTIC_TEST_PATTERN = [180, 90, 240];
+      const HAPTIC_DURATION_MIN_MS = 55;
+      const HAPTIC_DURATION_MAX_MS = 280;
+      const HAPTIC_TEST_PATTERN = [420, 160, 640];
+      const HAPTIC_TEST_FALLBACK_PULSE_MS = 720;
       const HAPTIC_MIN_INTERVAL_MS = 120;
       const normalizeHapticStrength = (value) => {
         const n = Number(value);
@@ -1461,16 +1462,20 @@
         const ms = Math.max(1, Math.round(hapticDurationMs() * Number(multiplier || 1)));
         const pattern = Array.isArray(forcedPattern)
           ? forcedPattern
-          : [Math.max(18, Math.round(ms * 0.7)), 32, Math.max(28, Math.round(ms * 1.1))];
-        const attempts = [pattern, ms, [ms]];
+          : [Math.max(55, Math.round(ms * 0.85)), 60, Math.max(90, Math.round(ms * 1.35))];
+        const attempts = Array.isArray(forcedPattern)
+          ? [pattern, [420], 420, [280, 120, 420], HAPTIC_TEST_FALLBACK_PULSE_MS]
+          : [Math.max(65, ms), [Math.max(65, ms)], pattern, Math.max(95, Math.round(ms * 1.25))];
         try {
+          let accepted = false;
           for (const attempt of attempts) {
             const result = navigator.vibrate(attempt);
-            if (result === true) {
-              hapticLastTriggeredAtMs = Date.now();
-              hapticLastResult = true;
-              return true;
-            }
+            if (result === true) accepted = true;
+          }
+          if (accepted) {
+            hapticLastTriggeredAtMs = Date.now();
+            hapticLastResult = true;
+            return true;
           }
           hapticLastResult = false;
           return false;
@@ -2035,7 +2040,7 @@
           if (!supportsHapticVibration()) {
             el.hapticSupportNote.textContent = "このブラウザではバイブAPIが利用できません。";
           } else if (hapticLastResult === false) {
-            el.hapticSupportNote.textContent = "APIは利用可能ですが振動が拒否されています。端末のタッチ時バイブ/省電力/サイレントを確認してください。";
+            el.hapticSupportNote.textContent = "API応答はありますが実振動できていません。Pixel/Androidは「設定 > 音とバイブレーション > タッチ操作のバイブ」「Chromeサイト設定のバイブ」をONにしてください。";
           } else {
             el.hapticSupportNote.textContent = "対応端末です。テストを押して振動を確認してください。";
           }
