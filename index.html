@@ -270,6 +270,15 @@
       color: var(--text-strong);
       border-color: color-mix(in srgb, var(--accent) 70%, black);
     }
+    .setting-inline-value {
+      min-width: 52px;
+      align-self: center;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+      font-size: .9rem;
+      font-weight: 700;
+    }
     .layout {
       display: grid;
       grid-template-columns: 1fr minmax(170px, 2fr) 1fr;
@@ -811,6 +820,18 @@
             </select>
           </div>
           <div class="field">
+            <label for="hapticEnabled">クリック時バイブ</label>
+            <div class="row">
+              <select id="hapticEnabled" class="sel">
+                <option value="on">オン</option>
+                <option value="off">オフ</option>
+              </select>
+              <input id="hapticStrength" type="range" min="10" max="100" step="5" value="60">
+              <span id="hapticStrengthValue" class="setting-inline-value">60%</span>
+            </div>
+            <div id="hapticSupportNote" class="backup-status"></div>
+          </div>
+          <div class="field">
             <label for="newVehicleNumber">車両番号を登録</label>
             <div class="row">
               <input id="newVehicleNumber" type="text" placeholder="例: 品川 100 あ 1234" autocomplete="off">
@@ -931,7 +952,9 @@
         vehicles: "tire.monthly.vehicles.v1",
         drivers: "tire.monthly.drivers.v1",
         truckTypes: "tire.monthly.trucktypes.v1",
-        theme: "tire.monthly.theme.v1"
+        theme: "tire.monthly.theme.v1",
+        hapticEnabled: "tire.monthly.haptic.enabled.v1",
+        hapticStrength: "tire.monthly.haptic.strength.v1"
       };
       const SETTINGS_BACKUP_KIND = Object.freeze({
         VEHICLES: "vehicles",
@@ -1072,6 +1095,10 @@
         sendFarewell: document.getElementById("sendFarewell"),
         sendFarewellImage: document.getElementById("sendFarewellImage"),
         themeMode: document.getElementById("themeMode"),
+        hapticEnabled: document.getElementById("hapticEnabled"),
+        hapticStrength: document.getElementById("hapticStrength"),
+        hapticStrengthValue: document.getElementById("hapticStrengthValue"),
+        hapticSupportNote: document.getElementById("hapticSupportNote"),
         settingsUpdatedAt: document.getElementById("settingsUpdatedAt"),
         newVehicleNumber: document.getElementById("newVehicleNumber"),
         addVehicleBtn: document.getElementById("addVehicleBtn"),
@@ -1172,6 +1199,16 @@
           return fallback;
         }
       };
+      const HAPTIC_STRENGTH_MIN = 10;
+      const HAPTIC_STRENGTH_MAX = 100;
+      const HAPTIC_STRENGTH_DEFAULT = 60;
+      const normalizeHapticStrength = (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return HAPTIC_STRENGTH_DEFAULT;
+        const rounded = Math.round(n / 5) * 5;
+        return Math.max(HAPTIC_STRENGTH_MIN, Math.min(HAPTIC_STRENGTH_MAX, rounded));
+      };
+      const supportsHapticVibration = () => typeof navigator !== "undefined" && typeof navigator.vibrate === "function";
 
       const normalizeCurrent = (obj) => {
         const base = defaultCurrent();
@@ -1331,6 +1368,8 @@
         return drivers.findIndex((entry) => normalizeDriverName(entry) === target);
       };
       const hasDriverName = (name) => findDriverIndexByName(name) >= 0;
+      let hapticEnabled = read(STORAGE.hapticEnabled, true) !== false;
+      let hapticStrength = normalizeHapticStrength(read(STORAGE.hapticStrength, HAPTIC_STRENGTH_DEFAULT));
       let settingsBackupMeta = emptyBackupMeta();
       let settingsBackupLoading = false;
       let settingsBackupWorking = false;
@@ -1385,6 +1424,34 @@
       const saveTruckTypes = () => {
         localStorage.setItem(STORAGE.truckTypes, JSON.stringify(truckTypes));
         scheduleCloudSync("master");
+      };
+      const saveHapticSettings = () => {
+        localStorage.setItem(STORAGE.hapticEnabled, JSON.stringify(hapticEnabled));
+        localStorage.setItem(STORAGE.hapticStrength, JSON.stringify(hapticStrength));
+      };
+      const hapticDurationMs = () => {
+        const ratio = hapticStrength / HAPTIC_STRENGTH_MAX;
+        return Math.max(8, Math.min(32, Math.round(8 + (ratio * 24))));
+      };
+      const triggerHaptic = (multiplier = 1) => {
+        if (!hapticEnabled) return;
+        if (!supportsHapticVibration()) return;
+        const ms = Math.max(1, Math.round(hapticDurationMs() * Number(multiplier || 1)));
+        try {
+          navigator.vibrate(ms);
+        } catch {
+          // noop
+        }
+      };
+      const setHapticEnabled = (enabled) => {
+        hapticEnabled = enabled !== false;
+        saveHapticSettings();
+        renderSettings();
+      };
+      const setHapticStrength = (value) => {
+        hapticStrength = normalizeHapticStrength(value);
+        saveHapticSettings();
+        if (el.hapticStrengthValue) el.hapticStrengthValue.textContent = `${hapticStrength}%`;
       };
 
       function cleanupLegacyExportDirectoryStorage() {
@@ -1921,6 +1988,19 @@
       function renderSettings() {
         const mode = document.body.getAttribute("data-theme") === "dark" ? "dark" : "light";
         el.themeMode.value = mode;
+        if (el.hapticEnabled) el.hapticEnabled.value = hapticEnabled ? "on" : "off";
+        if (el.hapticStrength) {
+          el.hapticStrength.value = String(hapticStrength);
+          el.hapticStrength.disabled = !hapticEnabled;
+        }
+        if (el.hapticStrengthValue) el.hapticStrengthValue.textContent = `${hapticStrength}%`;
+        if (el.hapticSupportNote) {
+          if (supportsHapticVibration()) {
+            el.hapticSupportNote.textContent = "端末が対応している場合、クリック時に振動します。";
+          } else {
+            el.hapticSupportNote.textContent = "この端末/ブラウザではバイブレーション非対応です。";
+          }
+        }
         if (el.settingsUpdatedAt) el.settingsUpdatedAt.textContent = `更新: ${latestCommitPushedAt}`;
         renderVehicleList();
         renderDriverList();
@@ -2714,6 +2794,14 @@
         appendSide(el.rightTires, layout.right);
       }
 
+      function shouldTriggerHapticFromClickTarget(target) {
+        if (!(target instanceof Element)) return false;
+        const interactive = target.closest("button, select, input[type='range'], input[type='checkbox'], input[type='radio'], input[type='button'], input[type='submit']");
+        if (!(interactive instanceof HTMLElement)) return false;
+        if ("disabled" in interactive && interactive.disabled) return false;
+        return true;
+      }
+
       function bindEvents() {
         el.inspectionDate.addEventListener("change", (ev) => {
           if (!ev.target.value) return;
@@ -2756,6 +2844,17 @@
         el.openSettingsBtn.addEventListener("click", openSettingsDialog);
         el.closeSettingsBtn.addEventListener("click", closeSettingsDialog);
         el.themeMode.addEventListener("change", (ev) => setTheme(ev.target.value));
+        el.hapticEnabled.addEventListener("change", (ev) => {
+          const next = ev.target.value === "on";
+          setHapticEnabled(next);
+          if (next) triggerHaptic(0.9);
+        });
+        el.hapticStrength.addEventListener("input", (ev) => {
+          setHapticStrength(ev.target.value);
+        });
+        el.hapticStrength.addEventListener("change", () => {
+          triggerHaptic(0.9);
+        });
         el.addVehicleBtn.addEventListener("click", addVehicleNumber);
         el.newVehicleNumber.addEventListener("keydown", (ev) => {
           if (ev.key !== "Enter") return;
@@ -2849,6 +2948,10 @@
           }
         });
         el.stepSelect.addEventListener("change", (ev) => applyStep(ev.target.value));
+        document.addEventListener("click", (ev) => {
+          if (!shouldTriggerHapticFromClickTarget(ev.target)) return;
+          triggerHaptic();
+        }, { capture: true, passive: true });
       }
 
       async function registerSW() {
