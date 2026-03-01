@@ -1,4 +1,4 @@
-const CACHE_NAME = "monthly-tire-check-v22";
+const CACHE_NAME = "monthly-tire-check-v23";
 const ASSETS = [
   "./",
   "./index.html",
@@ -6,6 +6,7 @@ const ASSETS = [
   "./sw.js",
   "./firebase/firebase-config.js?v=20260226-1",
   "./firebase/firebase-cloud-sync.js?v=20260226-1",
+  "./icons/icon-180.png",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
 ];
