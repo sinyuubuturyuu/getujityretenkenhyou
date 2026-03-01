@@ -828,7 +828,8 @@
           <div class="field">
             <label for="newDriverName">乗務員を登録</label>
             <div class="row">
-              <input id="newDriverName" type="text" placeholder="例: 山田 太郎" autocomplete="off">
+              <input id="newDriverName" type="text" placeholder="漢字 例: 山田 太郎" autocomplete="off">
+              <input id="newDriverReading" type="text" placeholder="ひらがな 例: やまだ たろう" autocomplete="off">
               <button id="addDriverBtn" class="btn primary" type="button">登録</button>
               <button id="saveDriverBackupBtn" class="mini-btn show-btn" type="button">保存</button>
               <button id="restoreDriverBackupBtn" class="mini-btn restore-btn" type="button">復元</button>
@@ -1080,6 +1081,7 @@
         vehicleBackupStatus: document.getElementById("vehicleBackupStatus"),
         vehicleList: document.getElementById("vehicleList"),
         newDriverName: document.getElementById("newDriverName"),
+        newDriverReading: document.getElementById("newDriverReading"),
         addDriverBtn: document.getElementById("addDriverBtn"),
         saveDriverBackupBtn: document.getElementById("saveDriverBackupBtn"),
         restoreDriverBackupBtn: document.getElementById("restoreDriverBackupBtn"),
@@ -1255,6 +1257,53 @@
         });
         return uniq.slice(0, 300);
       };
+      const JA_COLLATOR = new Intl.Collator("ja", {
+        usage: "sort",
+        sensitivity: "base",
+        numeric: true,
+        ignorePunctuation: true
+      });
+      const KATAKANA_RE = /[\u30A1-\u30F6]/g;
+      const DRIVER_WITH_READING_RE = /^(.*?)[\s　]*[（(]([^（）()]+)[）)]$/;
+      const toHiragana = (value) => String(value ?? "")
+        .normalize("NFKC")
+        .replace(KATAKANA_RE, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60));
+      const parseDriverEntry = (value) => {
+        const raw = String(value ?? "").trim();
+        if (!raw) return { name: "", reading: "" };
+        const match = raw.match(DRIVER_WITH_READING_RE);
+        if (!match) return { name: raw, reading: "" };
+        const name = String(match[1] ?? "").trim();
+        const reading = String(match[2] ?? "").trim();
+        if (!name || !reading) return { name: raw, reading: "" };
+        return { name, reading };
+      };
+      const normalizeDriverName = (value) => parseDriverEntry(value).name;
+      const normalizeDriverReading = (value) => toHiragana(value).replace(/\s+/g, "").trim();
+      const normalizeDriverEntry = (value) => {
+        const parsed = parseDriverEntry(value);
+        if (!parsed.name) return "";
+        if (!parsed.reading) return parsed.name;
+        return `${parsed.name}（${normalizeDriverReading(parsed.reading)}）`;
+      };
+      const driverSortKey = (value) => {
+        const parsed = parseDriverEntry(value);
+        const source = parsed.reading || parsed.name;
+        return normalizeDriverReading(source);
+      };
+      const normalizeDrivers = (rows) => normalizeVehicles(
+        Array.isArray(rows) ? rows.map((item) => normalizeDriverEntry(item)) : []
+      ).sort((a, b) => {
+        const keyCompare = JA_COLLATOR.compare(driverSortKey(a), driverSortKey(b));
+        if (keyCompare !== 0) return keyCompare;
+        return JA_COLLATOR.compare(normalizeDriverName(a), normalizeDriverName(b));
+      });
+      const isSameStringArray = (a, b) => (
+        Array.isArray(a)
+        && Array.isArray(b)
+        && a.length === b.length
+        && a.every((value, index) => value === b[index])
+      );
       const normalizeTruckTypes = (rows) => {
         if (!Array.isArray(rows)) return sortTruckTypes(TRUCK_TYPE_CATALOG.map((item) => item.value));
         const uniq = [];
@@ -1273,8 +1322,15 @@
       let current = normalizeCurrent(read(STORAGE.current, defaultCurrent()));
       let previous = normalizePrevious(read(STORAGE.previous, null));
       let vehicles = normalizeVehicles(read(STORAGE.vehicles, []));
-      let drivers = normalizeVehicles(read(STORAGE.drivers, []));
+      let drivers = normalizeDrivers(read(STORAGE.drivers, []));
       let truckTypes = normalizeTruckTypes(read(STORAGE.truckTypes, TRUCK_TYPE_CATALOG.map((item) => item.value)));
+      const firstDriverName = () => drivers.length > 0 ? normalizeDriverName(drivers[0]) : "";
+      const findDriverIndexByName = (name) => {
+        const target = String(name ?? "").trim();
+        if (!target) return -1;
+        return drivers.findIndex((entry) => normalizeDriverName(entry) === target);
+      };
+      const hasDriverName = (name) => findDriverIndexByName(name) >= 0;
       let settingsBackupMeta = emptyBackupMeta();
       let settingsBackupLoading = false;
       let settingsBackupWorking = false;
@@ -1322,6 +1378,7 @@
         scheduleCloudSync("master");
       };
       const saveDrivers = () => {
+        drivers = normalizeDrivers(drivers);
         localStorage.setItem(STORAGE.drivers, JSON.stringify(drivers));
         scheduleCloudSync("master");
       };
@@ -1340,12 +1397,13 @@
         }
       }
 
+      current.driverName = normalizeDriverName(current.driverName);
       if (current.vehicleNumber && !vehicles.includes(current.vehicleNumber)) {
         vehicles.unshift(current.vehicleNumber);
         saveVehicles();
       }
-      if (current.driverName && !drivers.includes(current.driverName)) {
-        drivers.unshift(current.driverName);
+      if (current.driverName && !hasDriverName(current.driverName)) {
+        drivers = normalizeDrivers(drivers.concat(current.driverName));
         saveDrivers();
       }
       if (!truckTypes.includes(current.truckType)) {
@@ -1409,7 +1467,7 @@
       }
 
       function renderBasicInfoDisplay() {
-        const driverName = String(current.driverName || "").trim();
+        const driverName = normalizeDriverName(current.driverName);
         const vehicleNumber = String(current.vehicleNumber || "").trim();
         const truckType = truckTypes.includes(current.truckType) ? current.truckType : "";
 
@@ -1462,29 +1520,36 @@
       }
 
       function renderDriverList() {
+        const orderedDrivers = normalizeDrivers(drivers);
+        if (!isSameStringArray(drivers, orderedDrivers)) {
+          drivers = orderedDrivers;
+          saveDrivers();
+        }
+
         el.driverList.innerHTML = "";
-        if (drivers.length === 0) {
+        if (orderedDrivers.length === 0) {
           el.driverList.innerHTML = '<div class="empty">登録済み乗務員はありません。</div>';
           return;
         }
 
-        drivers.forEach((driver) => {
+        orderedDrivers.forEach((driver) => {
+          const driverName = normalizeDriverName(driver);
           const row = document.createElement("div");
           row.className = "vehicle-item";
 
           const label = document.createElement("span");
-          label.textContent = driver;
+          label.textContent = driverName;
 
           const actions = document.createElement("div");
           actions.className = "vehicle-item-actions";
 
           const show = document.createElement("button");
           show.type = "button";
-          show.className = `mini-btn show-btn${current.driverName === driver ? " active" : ""}`;
+          show.className = `mini-btn show-btn${current.driverName === driverName ? " active" : ""}`;
           show.textContent = "表示";
           show.dataset.driver = driver;
           show.dataset.action = "show";
-          show.setAttribute("aria-pressed", current.driverName === driver ? "true" : "false");
+          show.setAttribute("aria-pressed", current.driverName === driverName ? "true" : "false");
 
           const remove = document.createElement("button");
           remove.type = "button";
@@ -1683,7 +1748,7 @@
 
       function backupValuesForKind(kind) {
         if (kind === SETTINGS_BACKUP_KIND.VEHICLES) return normalizeVehicles(vehicles);
-        if (kind === SETTINGS_BACKUP_KIND.DRIVERS) return normalizeVehicles(drivers);
+        if (kind === SETTINGS_BACKUP_KIND.DRIVERS) return normalizeDrivers(drivers);
         return [];
       }
 
@@ -1737,9 +1802,9 @@
           return;
         }
         if (kind === SETTINGS_BACKUP_KIND.DRIVERS) {
-          drivers = normalizeVehicles(values);
+          drivers = normalizeDrivers(values);
           saveDrivers();
-          if (current.driverName && !drivers.includes(current.driverName)) {
+          if (current.driverName && !hasDriverName(current.driverName)) {
             current.driverName = "";
             saveCurrent();
             void refreshPreviousFromCloud();
@@ -1775,10 +1840,38 @@
             return;
           }
           const backupValues = Array.isArray(result.backup.values) ? result.backup.values : [];
-          applyRestoredSettingsBackup(normalizedKind, backupValues);
-          setBackupMeta(normalizedKind, result.backup);
+          const normalizedBackupValues = normalizedKind === SETTINGS_BACKUP_KIND.DRIVERS
+            ? normalizeDrivers(backupValues)
+            : normalizeVehicles(backupValues);
+          const shouldRewriteDriversBackup = (
+            normalizedKind === SETTINGS_BACKUP_KIND.DRIVERS
+            && !isSameStringArray(backupValues, normalizedBackupValues)
+          );
+
+          applyRestoredSettingsBackup(normalizedKind, normalizedBackupValues);
+
+          let nextBackupMeta = result.backup;
+          if (shouldRewriteDriversBackup) {
+            const rewriteResult = await window.FirebaseCloudSync.saveSettingsBackup(
+              normalizedKind,
+              SETTINGS_BACKUP_SLOT,
+              normalizedBackupValues,
+              { source: "settings_normalize" }
+            );
+            if (rewriteResult && rewriteResult.ok && rewriteResult.backup) {
+              nextBackupMeta = rewriteResult.backup;
+            } else {
+              console.warn("Settings backup normalize rewrite failed:", rewriteResult);
+            }
+          }
+
+          setBackupMeta(normalizedKind, nextBackupMeta);
           renderAll();
-          showToast(`${backupKindLabel(normalizedKind)}をバックアップから復元しました`);
+          if (shouldRewriteDriversBackup) {
+            showToast(`${backupKindLabel(normalizedKind)}を復元し、あいうえお順でバックアップ更新しました`);
+          } else {
+            showToast(`${backupKindLabel(normalizedKind)}をバックアップから復元しました`);
+          }
         } catch (error) {
           console.warn("Failed to restore settings backup:", error);
           showToast("バックアップ復元に失敗しました");
@@ -2234,7 +2327,7 @@
         closeDialog();
         current = defaultCurrent();
         current.truckType = truckTypes.includes(truckType) ? truckType : (truckTypes[0] || TRUCK_TYPES.LOW12);
-        current.driverName = drivers.includes(driverName) ? driverName : "";
+        current.driverName = hasDriverName(driverName) ? driverName : "";
         current.vehicleNumber = vehicles.includes(vehicleNumber) ? vehicleNumber : "";
         saveCurrent();
         buildTires();
@@ -2379,8 +2472,8 @@
       }
 
       function setDriverName(name) {
-        const next = String(name || "").trim();
-        if (next && !drivers.includes(next)) return;
+        const next = normalizeDriverName(name);
+        if (next && !hasDriverName(next)) return;
         if (current.driverName === next) return;
         current.driverName = next;
         saveCurrent();
@@ -2457,41 +2550,67 @@
       }
 
       function addDriverName() {
-        const value = String(el.newDriverName.value || "").trim();
-        if (!value) {
-          showToast("乗務員を入力してください");
+        const rawName = String(el.newDriverName.value || "").trim();
+        const rawReading = String(el.newDriverReading.value || "").trim();
+        const parsedName = parseDriverEntry(rawName);
+        const driverName = normalizeDriverName(parsedName.name || rawName);
+        if (!driverName) {
+          showToast("乗務員名（漢字）を入力してください");
           return;
         }
-        if (drivers.includes(value)) {
-          showToast("同じ乗務員は登録済みです");
+        const readingSource = rawReading || parsedName.reading;
+        const normalizedEntry = normalizeDriverEntry(
+          readingSource ? `${driverName}（${readingSource}）` : driverName
+        );
+        const normalizedReading = parseDriverEntry(normalizedEntry).reading;
+
+        const sameNameIndex = findDriverIndexByName(driverName);
+        if (sameNameIndex >= 0) {
+          const existingEntry = drivers[sameNameIndex];
+          if (existingEntry === normalizedEntry) {
+            showToast("同じ乗務員は登録済みです");
+            return;
+          }
+          drivers.splice(sameNameIndex, 1, normalizedEntry);
+          drivers = normalizeDrivers(drivers);
+          saveDrivers();
+          el.newDriverName.value = "";
+          el.newDriverReading.value = "";
+          renderAll();
+          showToast("乗務員の読みを更新しました");
           return;
         }
 
-        drivers.push(value);
-        drivers.sort((a, b) => a.localeCompare(b, "ja"));
+        drivers = normalizeDrivers(drivers.concat(normalizedEntry));
         saveDrivers();
 
         if (!current.driverName) {
-          current.driverName = value;
+          current.driverName = driverName;
           saveCurrent();
           void refreshPreviousFromCloud();
         }
 
         el.newDriverName.value = "";
+        el.newDriverReading.value = "";
         renderAll();
+        if (!normalizedReading && /[\u3400-\u9FFF]/.test(driverName)) {
+          showToast("乗務員を登録しました（ひらがなを入力すると、あいうえお順で並びます）");
+          return;
+        }
         showToast("乗務員を登録しました");
       }
 
       function removeDriverName(value) {
         const index = drivers.indexOf(value);
         if (index < 0) return;
-        if (!window.confirm(`「${value}」を削除しますか？`)) return;
+        const targetName = normalizeDriverName(value);
+        if (!window.confirm(`「${targetName}」を削除しますか？`)) return;
 
         drivers.splice(index, 1);
         saveDrivers();
 
-        if (current.driverName === value) {
-          current.driverName = drivers[0] || "";
+        if (current.driverName === targetName) {
+          current.driverName = firstDriverName();
           saveCurrent();
           void refreshPreviousFromCloud();
         }
@@ -2647,6 +2766,16 @@
         el.newDriverName.addEventListener("keydown", (ev) => {
           if (ev.key !== "Enter") return;
           ev.preventDefault();
+          const reading = String(el.newDriverReading.value || "").trim();
+          if (!reading) {
+            el.newDriverReading.focus();
+            return;
+          }
+          addDriverName();
+        });
+        el.newDriverReading.addEventListener("keydown", (ev) => {
+          if (ev.key !== "Enter") return;
+          ev.preventDefault();
           addDriverName();
         });
         el.addTruckTypeBtn.addEventListener("click", addTruckType);
@@ -2746,7 +2875,7 @@
         bindMobileFitScale();
         void refreshLatestCommitPushedAt({ force: true });
         if (!current.inspectionDate) current.inspectionDate = today();
-        if (!current.driverName && drivers.length > 0) current.driverName = drivers[0];
+        if (!current.driverName && drivers.length > 0) current.driverName = firstDriverName();
         if (!current.vehicleNumber && vehicles.length > 0) current.vehicleNumber = vehicles[0];
         if (!truckTypes.includes(current.truckType)) current.truckType = truckTypes[0] || TRUCK_TYPES.LOW12;
         currentScreen = FLOW_SCREENS.BASIC;
