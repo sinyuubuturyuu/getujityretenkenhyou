@@ -1,4 +1,4 @@
-const CACHE_NAME = "monthly-tire-check-v25";
+const CACHE_NAME = "monthly-tire-check-v26";
 const ASSETS = [
   "./",
   "./index.html",
@@ -12,6 +12,11 @@ const ASSETS = [
   "./icons/icon-192.png",
   "./icons/icon-512.png"
 ];
+const NETWORK_FIRST_PATHS = new Set([
+  "/app.js",
+  "/styles.css",
+  "/manifest.webmanifest"
+]);
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -48,6 +53,19 @@ self.addEventListener("fetch", (event) => {
     url.pathname.endsWith("/firebase/firebase-config.js")
     || url.pathname.endsWith("/firebase/firebase-cloud-sync.js")
   ) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  if (url.origin === self.location.origin && NETWORK_FIRST_PATHS.has(url.pathname)) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
