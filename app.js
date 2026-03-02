@@ -93,7 +93,7 @@
       };
 
       const NORMAL_FIELDS = [
-        { key: "maker", label: "メーカー", options: ["ミシュラン", "サイルン", "チャオヤン", "トーヨー", "ジンユー"] },
+        { key: "maker", label: "メーカー", options: ["ミシュラン", "サイルン", "チャオヤン", "トーヨー", "ジンユー", "ブリヂストン", "ダンロップ", "ヨコハマ"] },
         { key: "type", label: "種類", options: ["ノーマル", "スタッドレス", "再生", "リグ"] },
         { key: "groove", label: "溝", options: ["○", "△", "✕"] },
         { key: "wear", label: "偏摩耗", options: ["○", "△", "✕"] },
@@ -102,7 +102,7 @@
       ];
 
       const SPARE_FIELDS = [
-        { key: "maker", label: "メーカー", options: ["ミシュラン", "サイルン", "チャオヤン", "トーヨー", "ジンユー"] },
+        { key: "maker", label: "メーカー", options: ["ミシュラン", "サイルン", "チャオヤン", "トーヨー", "ジンユー", "ブリヂストン", "ダンロップ", "ヨコハマ"] },
         { key: "type", label: "種類", options: ["ノーマル", "スタッドレス", "再生", "リグ"] },
         { key: "condition", label: "状態", options: ["○", "△", "✕"] }
       ];
