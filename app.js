@@ -132,13 +132,7 @@
         inputDialog: document.getElementById("inputDialog"),
         dialogTarget: document.getElementById("dialogTarget"),
         dialogCloseBtn: document.getElementById("dialogCloseBtn"),
-        stepIndicator: document.getElementById("stepIndicator"),
-        stepTitle: document.getElementById("stepTitle"),
-        stepSelect: document.getElementById("stepSelect"),
-        stepPreview: document.getElementById("stepPreview"),
-        prevStepPreview: document.getElementById("prevStepPreview"),
-        prevStepBtn: document.getElementById("prevStepBtn"),
-        nextStepBtn: document.getElementById("nextStepBtn"),
+        stepFieldList: document.getElementById("stepFieldList"),
         closeStepBtn: document.getElementById("closeStepBtn"),
         inputWarning: document.getElementById("inputWarning"),
         closeSettingsBtn: document.getElementById("closeSettingsBtn"),
@@ -574,7 +568,7 @@
           const show = document.createElement("button");
           show.type = "button";
           show.className = `mini-btn show-btn${current.vehicleNumber === vehicle ? " active" : ""}`;
-          show.textContent = "表示";
+          show.textContent = "決定";
           show.dataset.vehicle = vehicle;
           show.dataset.action = "show";
           show.setAttribute("aria-pressed", current.vehicleNumber === vehicle ? "true" : "false");
@@ -621,7 +615,7 @@
           const show = document.createElement("button");
           show.type = "button";
           show.className = `mini-btn show-btn${current.driverName === driverName ? " active" : ""}`;
-          show.textContent = "表示";
+          show.textContent = "決定";
           show.dataset.driver = driver;
           show.dataset.action = "show";
           show.setAttribute("aria-pressed", current.driverName === driverName ? "true" : "false");
@@ -677,7 +671,7 @@
           const show = document.createElement("button");
           show.type = "button";
           show.className = `mini-btn show-btn${current.truckType === truckType ? " active" : ""}`;
-          show.textContent = "表示";
+          show.textContent = "決定";
           show.dataset.truckType = truckType;
           show.dataset.action = "show";
           show.setAttribute("aria-pressed", current.truckType === truckType ? "true" : "false");
@@ -1100,11 +1094,8 @@
         const spare = type === "spare";
         dialog = {
           target: spare ? "spare" : id,
-          fields: spare ? SPARE_FIELDS : NORMAL_FIELDS,
-          step: 0
+          fields: spare ? SPARE_FIELDS : NORMAL_FIELDS
         };
-        const obj = spare ? current.spare : current.tires[id];
-        dialog.step = firstUnfilled(obj, dialog.fields);
         el.dialogTarget.textContent = spare ? "スペアタイヤ入力" : `${circle(id, current.truckType)} タイヤ入力`;
         el.inputWarning.classList.remove("show");
         renderStep();
@@ -1132,7 +1123,6 @@
           closeDialog();
           return true;
         }
-        dialog.step = firstUnfilled(targetObj(), dialog.fields);
         renderStep();
         showToast("未入力があります");
         return false;
@@ -1161,52 +1151,54 @@
         else el.sendConfirmDialog.removeAttribute("open");
       }
       const targetObj = () => dialog.target === "spare" ? current.spare : current.tires[dialog.target];
-      const previousTargetObj = () => {
-        const matchedPrevious = previousForCurrentBasic();
-        if (!matchedPrevious) return null;
-        return dialog.target === "spare" ? matchedPrevious.spare : matchedPrevious.tires[dialog.target];
-      };
 
       function renderStep() {
         const obj = targetObj();
-        const prevObj = previousTargetObj();
-        const field = dialog.fields[dialog.step];
-        const promptText = "選択してください";
-        el.stepIndicator.textContent = "";
-        el.stepTitle.textContent = field.label;
-        el.stepSelect.innerHTML = [`<option value="">${promptText}</option>`]
-          .concat(field.options.map((v) => `<option value="${v}">${v}</option>`))
-          .join("");
-        // Always reset to placeholder so selecting the same value can still trigger `change`.
-        el.stepSelect.value = "";
-        el.stepPreview.textContent = dialog.fields.map((f) => `${f.label}: ${text(obj[f.key])}`).join("\n");
-        el.prevStepPreview.textContent = prevObj
-          ? dialog.fields.map((f) => `${f.label}: ${text(prevObj[f.key])}`).join("\n")
-          : "前回データなし";
-        el.prevStepBtn.disabled = dialog.step === 0;
-        el.nextStepBtn.disabled = dialog.step >= dialog.fields.length - 1;
-        requestAnimationFrame(() => el.stepSelect.focus());
+        const matchedPrevious = previousForCurrentBasic();
+        const prevObj = matchedPrevious
+          ? (dialog.target === "spare" ? matchedPrevious.spare : matchedPrevious.tires[dialog.target])
+          : null;
+        el.stepFieldList.innerHTML = "";
+        dialog.fields.forEach((f) => {
+          const row = document.createElement("div");
+          row.className = `step-select-row${obj[f.key] ? " done" : ""}`;
+          const label = document.createElement("span");
+          label.className = "step-row-label";
+          label.textContent = f.label;
+
+          const select = document.createElement("select");
+          select.className = "sel step-inline-select";
+          select.dataset.key = f.key;
+
+          const currentValue = obj[f.key] || "";
+          const previousValue = prevObj ? (prevObj[f.key] || "") : "";
+          const promptText = previousValue
+            ? `前回データ:${previousValue}`
+            : "前回データなし";
+          select.appendChild(new Option(promptText, ""));
+          const orderedOptions = previousValue && f.options.includes(previousValue)
+            ? [previousValue].concat(f.options.filter((value) => value !== previousValue))
+            : f.options;
+          orderedOptions.forEach((value) => {
+            select.appendChild(new Option(value, value));
+          });
+          select.value = currentValue || "";
+
+          row.appendChild(label);
+          row.appendChild(select);
+          el.stepFieldList.appendChild(row);
+        });
       }
 
-      function applyStep(value) {
+      function applyStep(fieldKey, value) {
         if (!value) return;
         const obj = targetObj();
-        const field = dialog.fields[dialog.step];
+        const field = dialog.fields.find((item) => item.key === fieldKey);
+        if (!field) return;
         obj[field.key] = value;
         saveCurrent();
         renderAll();
-        if (dialog.step < dialog.fields.length - 1) {
-          dialog.step += 1;
-          renderStep();
-          return;
-        }
-        if (hasDialogUnfilled()) {
-          dialog.step = firstUnfilled(obj, dialog.fields);
-          renderStep();
-          showToast("未入力があります");
-          return;
-        }
-        closeDialog();
+        renderStep();
       }
 
       function showInputWarning(message) {
@@ -1911,19 +1903,14 @@
           if (tryCloseInputDialog()) return;
           ev.preventDefault();
         });
-        el.prevStepBtn.addEventListener("click", () => {
-          if (dialog.step > 0) {
-            dialog.step -= 1;
-            renderStep();
-          }
+        el.stepFieldList.addEventListener("change", (ev) => {
+          const target = ev.target;
+          if (!(target instanceof HTMLSelectElement)) return;
+          if (!target.classList.contains("step-inline-select")) return;
+          const fieldKey = target.dataset.key;
+          if (!fieldKey) return;
+          applyStep(fieldKey, target.value);
         });
-        el.nextStepBtn.addEventListener("click", () => {
-          if (dialog.step < dialog.fields.length - 1) {
-            dialog.step += 1;
-            renderStep();
-          }
-        });
-        el.stepSelect.addEventListener("change", (ev) => applyStep(ev.target.value));
       }
 
       async function registerSW() {

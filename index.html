@@ -166,27 +166,13 @@
         <button id="dialogCloseBtn" class="btn" type="button" style="min-height:auto;padding:6px 10px;">閉じる</button>
       </div>
       <div class="modal-body">
-        <div id="stepIndicator" class="step"></div>
-        <h3 id="stepTitle"></h3>
-        <select id="stepSelect" class="sel"></select>
         <div class="field">
-          <label>入力内容一覧</label>
-          <div class="preview-grid">
-            <div class="preview-col">
-              <p class="preview-label">現在</p>
-              <p id="stepPreview" class="preview"></p>
-            </div>
-            <div class="preview-col">
-              <p class="preview-label">前回</p>
-              <p id="prevStepPreview" class="preview preview-prev"></p>
-            </div>
-          </div>
+          <label>入力項目</label>
+          <div id="stepFieldList" class="step-field-list"></div>
         </div>
       </div>
       <div id="inputWarning" class="input-warning" role="alert" aria-live="assertive"></div>
       <div class="modal-foot">
-        <button id="prevStepBtn" class="btn" type="button">前の項目</button>
-        <button id="nextStepBtn" class="btn" type="button">次の項目</button>
         <button id="closeStepBtn" class="btn primary" type="button">完了</button>
       </div>
     </div>
