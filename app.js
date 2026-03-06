@@ -1175,7 +1175,9 @@
           const promptText = previousValue
             ? `前回データ:${previousValue}`
             : "前回データなし";
-          select.appendChild(new Option(promptText, ""));
+          const promptOption = new Option(promptText, "");
+          promptOption.disabled = true;
+          select.appendChild(promptOption);
           const orderedOptions = previousValue && f.options.includes(previousValue)
             ? [previousValue].concat(f.options.filter((value) => value !== previousValue))
             : f.options;
