@@ -1175,9 +1175,7 @@
           const promptText = previousValue
             ? `前回データ:${previousValue}`
             : "前回データなし";
-          const promptOption = new Option(promptText, "");
-          promptOption.disabled = true;
-          select.appendChild(promptOption);
+          select.appendChild(new Option(promptText, ""));
           const orderedOptions = previousValue && f.options.includes(previousValue)
             ? [previousValue].concat(f.options.filter((value) => value !== previousValue))
             : f.options;
@@ -1911,6 +1909,11 @@
           if (!target.classList.contains("step-inline-select")) return;
           const fieldKey = target.dataset.key;
           if (!fieldKey) return;
+          if (!target.value) {
+            const obj = targetObj();
+            target.value = obj && obj[fieldKey] ? obj[fieldKey] : "";
+            return;
+          }
           applyStep(fieldKey, target.value);
         });
       }
